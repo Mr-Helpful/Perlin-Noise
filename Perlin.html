@@ -55,6 +55,18 @@
         cursor: ns-resize;
       }
     </style>
+    <!--
+    TODO:
+    - move noise selector to the top of the graph and use colours instead of names
+     - include the name in a tooltip
+
+    - improve the removal transition of points
+     - have them move with the path before disappearing
+     - this will require a bit of a rework of the way points are updated after removal
+
+    - change out the implementation of the perlin noise
+     - a class is overkill for the operations required
+    -->
     <script src="https://d3js.org/d3.v5.min.js"></script>
     <script src="https://unpkg.com/d3-interpolate-path/build/d3-interpolate-path.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/2.3.10/seedrandom.min.js"></script>
@@ -94,23 +106,177 @@
       }
     </script>
     <script id="Perlin" type="text/javascript">
+      // using a class is overkill (and will therefore slow this down)
+      // we can simply keep a nested array for each value and an amplitude to multiply by
+      // therefore, functional programming is better for this purpose
+      function generateVecs(tableSize){
+        let v = new Array(tableSize).fill(0)
+
+        function genVec(v, i){
+          let a = Math.random() * Math.PI * 2
+          let x = Math.sin(a)
+          let y = Math.cos(a)
+          return [x, y]
+        }
+
+        return v.map(genVec)
+      }
+
+      function generateHashes(tableSize){
+        let h = new Array(tableSize).fill(0)
+
+        h = h.map((v, i) => i)
+        h.forEach((v, i) => {
+          let j = Math.floor(Math.random() * h.length)
+          h[i] = h[j]
+          h[j] = v
+        })
+
+        // this simply doubles the array
+        h.push(...h)
+        return h
+      }
+
+      function queryPoints(setup, w){
+        let t = new Array(w).fill(0)
+        let tableSize = setup[3].length
+
+        // setting up a blank array of points to be filled
+        let points = []
+
+        // using a forEach method is quicker than a for loop
+        [...t].forEach((v, x) => {
+          [...t].forEach((v, y) => {
+            points.push({"x":x,
+                         "y":y,
+                         "v":query(x, y, ...setup, tableSize)})
+            })
+          })
+
+        return points
+      }
+
+      function query(x, y, f, lFunc, hashTable, vecsTable, tableSize){
+        let x1, x2, xf, y1, y2, yf, t
+        let vals = [x, y].map(v => {
+          v *= f
+          v %= tableSize
+          t = Math.floor(v)
+          v -= t
+          return [t, (t + 1) % tableSize, v]
+        })
+        [[x1, x2, xf], [y1, y2, yf]] = vals
+
+        let v11, v12, v21, v22
+        v11 = hashTable[hashTable[x1] + y1]
+        v12 = hashTable[hashTable[x1] + y2]
+        v21 = hashTable[hashTable[x2] + y1]
+        v22 = hashTable[hashTable[x2] + y2]
+
+        v11 = vecsTable[v11]
+        v12 = vecsTable[v12]
+        v21 = vecsTable[v21]
+        v22 = vecsTable[v22]
+
+        v11 = dot(...v11, xf, yf)
+        v12 = dot(...v12, xf, 1-yf)
+        v21 = dot(...v21, 1-xf, yf)
+        v22 = dot(...v22, 1-xf, 1-yf)
+
+        v11 = lerp(v11, v21, lFunc(xf))
+        v12 = lerp(v12, v22, lFunc(xf))
+        return lerp(v11, v12, lFunc(yf))
+      }
+
+      dot(x1, y1, x2, y2){
+        return x1*x2 + y1*y2
+      }
+
+      lerp(v1, v2, t){
+        return v1 * t + v2 * (1-t)
+      }
+
       class Perlin{
         TableSize = 256
-        vecsTable = new Array(this.TableSize).fill(0)
-        hashTable = new Array(this.TableSize * 2).fill(0)
-        constructor(f){
-          this.f = f
+        lFuncs = {"Linear":t => (t),
+                  "Smooth":t => (t * t * (3 - 2 * t)),
+                  "Perlin":t => (t * t * t * (10 + t * (6 * t - 15)))}
 
+        constructor(f, funcName = 0){
+          this.f = f
+          this.lFunc = this.lFuncs[funcName] || this.lFuncs["Linear"]
+          this.vecsTable = new Array(this.TableSize).fill(0)
+          this.hashTable = new Array(this.TableSize * 2).fill(0)
+
+          this.generateVecs()
+          this.generateHashes()
         }
+
         generateVecs(){
           function genVec(v, i){
-            var a = Math.random() * Math.PI
-            var x = Math.sin(a)
-            var y = Math.cos(a)
+            let a = Math.random() * Math.PI * 2
+            let x = Math.sin(a)
+            let y = Math.cos(a)
+            return [x, y]
           }
-          vecsTable = vecsTable.map()
+          this.vecsTable = this.vecsTable.map(genVec)
+        }
+
+        generateHashes(){
+          let h = new Array(this.TableSize).fill(0)
+          h = h.map((v, i) => i)
+          h.forEach((v, i) => {
+            let j = Math.floor(Math.random() * h.length)
+            h[i] = h[j]
+            h[j] = v
+          })
+          this.hashTable = this.hashTable.map((v, i) => {
+            return h[i % this.TableSize]
+          })
+        }
+
+        query(x, y){
+          let x1, x2, xf, y1, y2, yf, t
+          let vals = [x, y].map(v => {
+            v *= this.f
+            v %= this.TableSize
+            t = Math.floor(v)
+            v -= t
+            return [t, (t + 1) % this.TableSize, v]
+          })
+          [[x1, x2, xf], [y1, y2, yf]] = vals
+
+          let v11, v12, v21, v22
+          v11 = this.hashTable[this.hashTable[x1] + y1]
+          v12 = this.hashTable[this.hashTable[x1] + y2]
+          v21 = this.hashTable[this.hashTable[x2] + y1]
+          v22 = this.hashTable[this.hashTable[x2] + y2]
+
+          v11 = this.vecsTable[v11]
+          v12 = this.vecsTable[v12]
+          v21 = this.vecsTable[v21]
+          v22 = this.vecsTable[v22]
+
+          v11 = this.dot(...v11, xf, yf)
+          v12 = this.dot(...v12, xf, 1-yf)
+          v21 = this.dot(...v21, 1-xf, yf)
+          v22 = this.dot(...v22, 1-xf, 1-yf)
+
+          v11 = lerp(v11, v21, this.lFunc(xf))
+          v12 = lerp(v12, v22, this.lFunc(xf))
+          return lerp(v11, v12, this.lFunc(yf))
+        }
+
+        dot(x1, y1, x2, y2){
+          return x1*x2 + y1*y2
+        }
+
+        lerp(v1, v2, t){
+          return v1 * t + v2 * (1-t)
         }
       }
+
+
     </script>
     <script id="Defaults" type="text/javascript">
       defaults = {"Custom": [[0, 0], [1024, 0]],
@@ -149,22 +315,23 @@
       // credit to:
       // Denise Mauldin (draggable line graph)
       // https://bl.ocks.org/denisemauldin/538bfab8378ac9c3a32187b4d7aed2c2
+
       function initLevels(){
-        var svg = d3.select("svg"),
+        let svg = d3.select("svg"),
             margin = {top: 50, right: 20, bottom: 30, left: 50},
             width = +svg.attr("width") - margin.left - margin.right,
             height = +svg.attr("height") - margin.top - margin.bottom
 
-        var x = d3.scaleLinear()
+        let x = d3.scaleLinear()
                   .rangeRound([0, width])
 
-        var y = d3.scaleLinear()
+        let y = d3.scaleLinear()
                   .rangeRound([height, 0])
 
-        var xAxis = d3.axisBottom(x),
+        let xAxis = d3.axisBottom(x),
             yAxis = d3.axisLeft(y)
 
-        var line = d3.line()
+        let line = d3.line()
                      .x(function(d) { return x(d[0]) })
                      .y(function(d) { return y(d[1]) })
 
@@ -173,7 +340,7 @@
                      .on('drag', dragged)
                      .on('end', dragended)
 
-        var points = []
+        let points = []
 
         svg.append('rect')
            .attr('class', 'zoom')
@@ -183,7 +350,7 @@
            .attr('height', height)
            .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
 
-        var focus = svg.append("g")
+        let focus = svg.append("g")
                        .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
 
         x.domain([0, 1024])
@@ -195,10 +362,10 @@
           const t = focus.transition()
                          .duration(T)
 
-          var p = focus.select("path.line")
+          let p = focus.select("path.line")
           if(i != -1){
             p.datum(points)
-             .transition(t)
+             .transition(T)
              .attr("d", line)
 
             points.splice(i, 1)
@@ -210,7 +377,7 @@
            .delay(T)
            .attr("d", line)
 
-          var c = focus.selectAll('circle.line')
+          let c = focus.selectAll('circle.line')
           c.data(points, d => d[0])
            .join(enter => enter.append('circle')
                                .attr("class", "line")
@@ -234,9 +401,9 @@
         }
 
         function addPoint(d){
-          var coords = d3.mouse(this)
+          let coords = d3.mouse(this)
 
-          var n = [x.invert(coords[0]),
+          let n = [x.invert(coords[0]),
                    y.invert(coords[1])]
 
           points.push(n)
@@ -247,7 +414,7 @@
         function removePoint(d){
           d3.event.preventDefault()
 
-          var i = points.indexOf(d)
+          let i = points.indexOf(d)
 
           if(i > 0 && i < points.length - 1){
             points = flattenPoint(points, i)
@@ -260,7 +427,7 @@
           const [x1, y1] = points[i - 1]
           const [x2, y2] = points[i + 1]
           const t = (x - x1) / (x2 - x1)
-          var y = y2 * t + y1 * (1 - t)
+          let y = y2 * t + y1 * (1 - t)
           points[i][1] = y
           return points
         }
@@ -329,20 +496,31 @@
     <script id="Sampler", type="text/javascript">
       // key terms:
       // resolution - the number of points per pixel
-      // imageRatio - width / height (as a decimal)
+      let hMap = []
 
-      function sample(Perlin, iw, ih){
+      function genHMap(iw, ih){
+        let i, j
+        for(j = 0; j < ih; j++){
+          for(i = 0; i < iw; i++){
+            hMap.append({"x":i,
+                         "y":j,
+                         "v":0})
+          }
+        }
+      }
+
+      function sample(Perlin, iw, ih, A){
         const k = Math.max(iw, ih) / Perlin.w
 
-        var v, x, y, i, j, data = []
+        let v, x, y, i, j, data = []
         for(j = 0; j < ih; j++){
           y = j / k
           for(i = 0; i < iw; i++){
             x = i / k
-            v = Perlin.val(x, y)
-            data.append[{"x":i,
+            v = Perlin.query(x, y)
+            data.append({"x":i,
                          "y":j,
-                         "v":v}]
+                         "v":v * A})
           }
         }
 
@@ -351,6 +529,76 @@
 
       function draw(name, data, iw, ih){
 
+      }
+    </script>
+    <script id="Heatmap" type="text/javascript">
+      // taken from https://www.d3-graph-gallery.com/graph/heatmap_basic.html
+      // credit to: Yan Holtz
+
+      class Heatmap{
+        constructor(data, sWidth, sHeight, dWidth, dHeight){
+          this.sDims = [sWidth, sHeight]
+          this.dDims = [dWidth, dHeight]
+        }
+
+        changeHeatmap(data, dMax , sDims, dDims){
+          if(this.sDims == sDims && this.dDims == dDims){
+            this.updateSize(data, dMax , sDims, dDims)
+          }
+          else{
+            this.updateData(data, dMax)
+          }
+        }
+
+        // handles the case where only the colours of the heatmap need to be updated
+        // this case is relatively simple
+        // we don't even need to update the positions or the translate functions
+        updateData(data, dMax){
+          let c
+          c = d3.scaleLinear()
+                .range(["white", "#69b3a2"])
+                .domain([0, dMax])
+
+          svg.selectAll("rect")
+             .data(data, d => (d.x + "," + d.y))
+             .update()
+             .style("fill", d => c(d.v))
+        }
+
+        updateSize(data, dMax, sDims, dDims){
+          let x, y, c
+          x = d3.scaleBand()
+                .range([0, sDims[0]])
+                .domain([0, dDims[0]])
+                .padding(0.01)
+
+          y = d3.scaleBand()
+                .range([sDims[1], 0])
+                .domain([0, dDims[1]])
+                .padding(0.01)
+
+          c = d3.scaleLinear()
+                .range(["white", "#69b3a2"])
+                .domain([0, dMax])
+
+          svg.selectAll("rect")
+             .data(data, d => (d.x + "," + d.y))
+             .join(enter => enter.append("rect")
+                                 .attr("x", d => x(d.x))
+                                 .attr("y", d => y(d.y))
+                                 .attr("width", x.bandwidth())
+                                 .attr("height", y.bandwidth())
+                                 .style("fill", d => c(d.v)),
+                   update => update.attr("x", d => x(d.x))
+                                   .attr("y", d => y(d.x))
+                                   .attr("width", x.bandwidth())
+                                   .attr("height", y.bandwidth())
+                                   .style("fill", d => c(d.v)),
+                   exit => exit.remove())
+
+          this.sDims = sDims
+          this.dDims = dDims
+        }
       }
     </script>
   </head>
