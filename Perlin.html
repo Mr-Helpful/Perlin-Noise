@@ -60,16 +60,18 @@
     - move noise selector to the top of the graph and use colours instead of names
      - include the name in a tooltip
 
+    - change the scales to log scales, and update the data to reflect this
+
     - improve the removal transition of points
      - have them move with the path before disappearing
      - this will require a bit of a rework of the way points are updated after removal
 
     - change out the implementation of the perlin noise
      - a class is overkill for the operations required
+
+    - use dragended to update the Amplitude of parts of the map
     -->
     <script src="https://d3js.org/d3.v5.min.js"></script>
-    <script src="https://unpkg.com/d3-interpolate-path/build/d3-interpolate-path.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/seedrandom/2.3.10/seedrandom.min.js"></script>
     <script id="Vector" type="text/javascript">
       class Vector{
         constructor(x, y){
@@ -109,6 +111,25 @@
       // using a class is overkill (and will therefore slow this down)
       // we can simply keep a nested array for each value and an amplitude to multiply by
       // therefore, functional programming is better for this purpose
+      let perlinVals = {}
+
+      // this can both be used to create a new Perlin layer or refresh it
+      function updatePerlin(tableSize, f, A){
+        let perlin = []
+        perlin.push(A)
+        perlin.push(generateHashes(tableSize))
+        perlin.push(generateVecs(tableSize))
+        perlinVals[f] = perlin
+      }
+
+      function changeAmplitude(f, A){
+        perlinVals[f][0] = A
+      }
+
+      function removePerlin(f){
+        delete perlinVals[f]
+      }
+
       function generateVecs(tableSize){
         let v = new Array(tableSize).fill(0)
 
@@ -132,14 +153,14 @@
           h[j] = v
         })
 
-        // this simply doubles the array
+        // this simply duplicates the array
         h.push(...h)
         return h
       }
 
-      function queryPoints(setup, w){
+      function queryPoints(lFunc, f, perlin, w){
         let t = new Array(w).fill(0)
-        let tableSize = setup[3].length
+        let tableSize = perlin[2].length
 
         // setting up a blank array of points to be filled
         let points = []
@@ -149,14 +170,14 @@
           [...t].forEach((v, y) => {
             points.push({"x":x,
                          "y":y,
-                         "v":query(x, y, ...setup, tableSize)})
+                         "v":query(x, y, f, lFunc, ...perlin, tableSize)})
             })
           })
 
         return points
       }
 
-      function query(x, y, f, lFunc, hashTable, vecsTable, tableSize){
+      function query(x, y, f, lFunc, A, hashTable, vecsTable, tableSize){
         let x1, x2, xf, y1, y2, yf, t
         let vals = [x, y].map(v => {
           v *= f
@@ -279,37 +300,37 @@
 
     </script>
     <script id="Defaults" type="text/javascript">
-      defaults = {"Custom": [[0, 0], [1024, 0]],
-                  "Violet":[[Math.pow(2, 0), Math.pow(2, -20)],
-                            [Math.pow(2, 2), Math.pow(2, -16)],
-                            [Math.pow(2, 4), Math.pow(2, -12)],
-                            [Math.pow(2, 6), Math.pow(2, -8)],
-                            [Math.pow(2, 8), Math.pow(2, -4)],
-                            [Math.pow(2, 10), Math.pow(2, 0)]],
-                  "White": [[Math.pow(2, 0), Math.pow(2, 0)],
-                            [Math.pow(2, 2), Math.pow(2, 0)],
-                            [Math.pow(2, 4), Math.pow(2, 0)],
-                            [Math.pow(2, 6), Math.pow(2, 0)],
-                            [Math.pow(2, 8), Math.pow(2, 0)],
-                            [Math.pow(2, 10), Math.pow(2, 0)]],
-                  "Brown": [[Math.pow(2, 0), Math.pow(2, 0)],
-                            [Math.pow(2, 2), Math.pow(2, -4)],
-                            [Math.pow(2, 4), Math.pow(2, -8)],
-                            [Math.pow(2, 6), Math.pow(2, -12)],
-                            [Math.pow(2, 8), Math.pow(2, -16)],
-                            [Math.pow(2, 10), Math.pow(2, -20)]],
-                  "Pink":  [[Math.pow(2, 0), Math.pow(2, 0)],
-                            [Math.pow(2, 2), Math.pow(2, -2)],
-                            [Math.pow(2, 4), Math.pow(2, -4)],
-                            [Math.pow(2, 6), Math.pow(2, -6)],
-                            [Math.pow(2, 8), Math.pow(2, -8)],
-                            [Math.pow(2, 10), Math.pow(2, -10)]],
-                  "Blue":  [[Math.pow(2, 0), Math.pow(2, -10)],
-                            [Math.pow(2, 2), Math.pow(2, -8)],
-                            [Math.pow(2, 4), Math.pow(2, -6)],
-                            [Math.pow(2, 6), Math.pow(2, -4)],
-                            [Math.pow(2, 8), Math.pow(2, -2)],
-                            [Math.pow(2, 10), Math.pow(2, 0)]]}
+      defaults = {"Custom": [[0, 0], [10, 0]],
+                  "Violet":[[0, -20],
+                            [2, -16],
+                            [4, -12],
+                            [6, -8],
+                            [8, -4],
+                            [10, 0]],
+                  "White": [[0, 0],
+                            [2, 0],
+                            [4, 0],
+                            [6, 0],
+                            [8, 0],
+                            [10, 0]],
+                  "Brown": [[0, 0],
+                            [2, -4],
+                            [4, -8],
+                            [6, -12],
+                            [8, -16],
+                            [10, -20]],
+                  "Pink":  [[0, 0],
+                            [2, -2],
+                            [4, -4],
+                            [6, -6],
+                            [8, -8],
+                            [10, -10]],
+                  "Blue":  [[0, -10],
+                            [2, -8],
+                            [4, -6],
+                            [6, -4],
+                            [8, -2],
+                            [10, 0]]}
     </script>
     <script id="Levels" type="text/javascript">
       // credit to:
@@ -318,7 +339,7 @@
 
       function initLevels(){
         let svg = d3.select("svg"),
-            margin = {top: 50, right: 20, bottom: 30, left: 50},
+            margin = {top: 50, right: 20, bottom: 50, left: 50},
             width = +svg.attr("width") - margin.left - margin.right,
             height = +svg.attr("height") - margin.top - margin.bottom
 
@@ -353,8 +374,23 @@
         let focus = svg.append("g")
                        .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
 
-        x.domain([0, 1024])
-        y.domain([0, 1])
+        focus.append("text")
+             .attr("class", "x label")
+             .attr("text-anchor", "top")
+             .attr("x", width / 2 - 50)
+             .attr("y", height + 40)
+             .text("Frequency (log2)")
+
+        focus.append("text")
+             .attr("class", "y label")
+             .attr("text-anchor", "top")
+             .attr("transform", "rotate(-90)")
+             .attr("x", -height / 2 - 50)
+             .attr("y", -40)
+             .text("Amplitude (log2)")
+
+        x.domain([0, 10])
+        y.domain([-20, 0])
         y.clamp(true)
 
         function updateGraph(points, i = -1){
@@ -537,16 +573,19 @@
 
       class Heatmap{
         constructor(data, sWidth, sHeight, dWidth, dHeight){
-          this.sDims = [sWidth, sHeight]
-          this.dDims = [dWidth, dHeight]
+          this.sDims = [0, 0]
+          this.dDims = [0, 0]
+          let sDims = [sWidth, sHeight]
+          let dDims = [dWidth, dHeight]
+          this.changeHeatmap(data, )
         }
 
         changeHeatmap(data, dMax , sDims, dDims){
           if(this.sDims == sDims && this.dDims == dDims){
-            this.updateSize(data, dMax , sDims, dDims)
+            this.updateData(data, dMax)
           }
           else{
-            this.updateData(data, dMax)
+            this.updateSize(data, dMax , sDims, dDims)
           }
         }
 
@@ -554,10 +593,9 @@
         // this case is relatively simple
         // we don't even need to update the positions or the translate functions
         updateData(data, dMax){
-          let c
-          c = d3.scaleLinear()
-                .range(["white", "#69b3a2"])
-                .domain([0, dMax])
+          let c = d3.scaleLinear()
+                    .range(["white", "#69b3a2"])
+                    .domain([0, dMax])
 
           svg.selectAll("rect")
              .data(data, d => (d.x + "," + d.y))
@@ -566,20 +604,19 @@
         }
 
         updateSize(data, dMax, sDims, dDims){
-          let x, y, c
-          x = d3.scaleBand()
-                .range([0, sDims[0]])
-                .domain([0, dDims[0]])
-                .padding(0.01)
+          let x = d3.scaleBand()
+                    .range([0, sDims[0]])
+                    .domain([0, dDims[0]])
+                    .padding(0.01)
 
-          y = d3.scaleBand()
-                .range([sDims[1], 0])
-                .domain([0, dDims[1]])
-                .padding(0.01)
+          let y = d3.scaleBand()
+                    .range([sDims[1], 0])
+                    .domain([0, dDims[1]])
+                    .padding(0.01)
 
-          c = d3.scaleLinear()
-                .range(["white", "#69b3a2"])
-                .domain([0, dMax])
+          let c = d3.scaleLinear()
+                    .range(["white", "#69b3a2"])
+                    .domain([0, dMax])
 
           svg.selectAll("rect")
              .data(data, d => (d.x + "," + d.y))
