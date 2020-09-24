@@ -60,14 +60,14 @@
     - move noise selector to the top of the graph and use colours instead of names
      - include the name in a tooltip
 
-    - change the scales to log scales, and update the data to reflect this
-
     - improve the removal transition of points
      - have them move with the path before disappearing
      - this will require a bit of a rework of the way points are updated after removal
 
-    - change out the implementation of the perlin noise
-     - a class is overkill for the operations required
+    - have a custom update function for translation of a layer
+     - this moves the values that have already been calculated instead of having to recalculate
+     - then generates new values where they are needed
+     - this is an optimisation
 
     - use dragended to update the Amplitude of parts of the map
     -->
@@ -107,185 +107,154 @@
         }
       }
     </script>
-    <script id="Perlin" type="text/javascript">
-      // using a class is overkill (and will therefore slow this down)
-      // we can simply keep a nested array for each value and an amplitude to multiply by
-      // therefore, functional programming is better for this purpose
-      let perlinVals = {}
-
-      // this can both be used to create a new Perlin layer or refresh it
-      function updatePerlin(tableSize, f, A){
-        let perlin = []
-        perlin.push(A)
-        perlin.push(generateHashes(tableSize))
-        perlin.push(generateVecs(tableSize))
-        perlinVals[f] = perlin
-      }
-
-      function changeAmplitude(f, A){
-        perlinVals[f][0] = A
-      }
-
-      function removePerlin(f){
-        delete perlinVals[f]
-      }
-
-      function generateVecs(tableSize){
-        let v = new Array(tableSize).fill(0)
-
-        function genVec(v, i){
-          let a = Math.random() * Math.PI * 2
-          let x = Math.sin(a)
-          let y = Math.cos(a)
-          return [x, y]
+    <script id="PerlinFuncs" type="text/javascript">
+      class Perlin{
+        constructor(fData, lFunc){
+          this.tableSize = 256
+          this.lFunc = lFunc
+          this.perlinVals = []
+          fData.forEach(d => this.addLevel(d))
         }
 
-        return v.map(genVec)
-      }
+        printLevels(){
+          console.log(this.perlinVals.map(v => v.slice(0,2)))
+        }
 
-      function generateHashes(tableSize){
-        let h = new Array(tableSize).fill(0)
+        zip(rows){
+          return rows[0].map((_, c) => rows.map(row => row[c]))
+        }
 
-        h = h.map((v, i) => i)
-        h.forEach((v, i) => {
-          let j = Math.floor(Math.random() * h.length)
-          h[i] = h[j]
-          h[j] = v
-        })
-
-        // this simply duplicates the array
-        h.push(...h)
-        return h
-      }
-
-      function queryPoints(lFunc, f, perlin, w){
-        let t = new Array(w).fill(0)
-        let tableSize = perlin[2].length
-
-        // setting up a blank array of points to be filled
-        let points = []
-
-        // using a forEach method is quicker than a for loop
-        [...t].forEach((v, x) => {
-          [...t].forEach((v, y) => {
-            points.push({"x":x,
-                         "y":y,
-                         "v":query(x, y, f, lFunc, ...perlin, tableSize)})
+        getData(dDims, transform){
+          let perlinData = this.perlinVals.map(pDatum => {
+            return this.queryPoints(pDatum, dDims)
+          })
+          return this.zip(perlinData).map(r => {
+            return r.reduce((v,d) => {
+              v["v"] += d["v"]
+              return v
             })
           })
+        }
 
-        return points
-      }
+        getMaxVal(){
+          return this.perlinVals.reduce((a, b) => a + b[1], 0) * 2**1.5
+        }
 
-      function query(x, y, f, lFunc, A, hashTable, vecsTable, tableSize){
-        let x1, x2, xf, y1, y2, yf, t
-        let vals = [x, y].map(v => {
-          v *= f
-          v %= tableSize
-          t = Math.floor(v)
-          v -= t
-          return [t, (t + 1) % tableSize, v]
-        })
-        [[x1, x2, xf], [y1, y2, yf]] = vals
+        addLevel(fDatum){
+          this.perlinVals.push(this.getLevel(fDatum))
+        }
 
-        let v11, v12, v21, v22
-        v11 = hashTable[hashTable[x1] + y1]
-        v12 = hashTable[hashTable[x1] + y2]
-        v21 = hashTable[hashTable[x2] + y1]
-        v22 = hashTable[hashTable[x2] + y2]
+        updateLevel(fDatum){
+          let [i, d] = this.fIndex(fDatum[0])
+          if(i == -1){
+            console.log("ERROR: Trying to edit a non-existant layer.")
+            console.log("This shouldn't happen, adding a new layer instead")
+            this.addLevel(fDatum)
+          }
+          else if(fDatum[1] == d[1]){
+            this.perlinVals[i] = this.getLevel(fDatum)
+          }
+          else{
+            this.perlinVals[i][1] = fDatum[1]
+          }
+        }
 
-        v11 = vecsTable[v11]
-        v12 = vecsTable[v12]
-        v21 = vecsTable[v21]
-        v22 = vecsTable[v22]
+        removeLevel(fDatum){
+          this.perlinVals = this.perlinVals.filter(d => d[0] != fDatum[0])
+        }
 
-        v11 = dot(...v11, xf, yf)
-        v12 = dot(...v12, xf, 1-yf)
-        v21 = dot(...v21, 1-xf, yf)
-        v22 = dot(...v22, 1-xf, 1-yf)
+        getLevel(fDatum){
+          return [...fDatum, this.generateHashes(), this.generateVecs()]
+        }
 
-        v11 = lerp(v11, v21, lFunc(xf))
-        v12 = lerp(v12, v22, lFunc(xf))
-        return lerp(v11, v12, lFunc(yf))
-      }
-
-      dot(x1, y1, x2, y2){
-        return x1*x2 + y1*y2
-      }
-
-      lerp(v1, v2, t){
-        return v1 * t + v2 * (1-t)
-      }
-
-      class Perlin{
-        TableSize = 256
-        lFuncs = {"Linear":t => (t),
-                  "Smooth":t => (t * t * (3 - 2 * t)),
-                  "Perlin":t => (t * t * t * (10 + t * (6 * t - 15)))}
-
-        constructor(f, funcName = 0){
-          this.f = f
-          this.lFunc = this.lFuncs[funcName] || this.lFuncs["Linear"]
-          this.vecsTable = new Array(this.TableSize).fill(0)
-          this.hashTable = new Array(this.TableSize * 2).fill(0)
-
-          this.generateVecs()
-          this.generateHashes()
+        fIndex(f){
+          return this.perlinVals.reduce((x, v, i) => v[0]==f?i:[x, v], -1)
         }
 
         generateVecs(){
+          let v = new Array(this.tableSize).fill(0)
+
           function genVec(v, i){
             let a = Math.random() * Math.PI * 2
             let x = Math.sin(a)
             let y = Math.cos(a)
             return [x, y]
           }
-          this.vecsTable = this.vecsTable.map(genVec)
+
+          return v.map(genVec)
         }
 
         generateHashes(){
-          let h = new Array(this.TableSize).fill(0)
+          let h = new Array(this.tableSize).fill(0)
+
           h = h.map((v, i) => i)
           h.forEach((v, i) => {
             let j = Math.floor(Math.random() * h.length)
             h[i] = h[j]
             h[j] = v
           })
-          this.hashTable = this.hashTable.map((v, i) => {
-            return h[i % this.TableSize]
-          })
+
+          // this simply doubles the array
+          h.push(...h)
+          return h
         }
 
-        query(x, y){
-          let x1, x2, xf, y1, y2, yf, t
-          let vals = [x, y].map(v => {
-            v *= this.f
-            v %= this.TableSize
-            t = Math.floor(v)
-            v -= t
-            return [t, (t + 1) % this.TableSize, v]
-          })
-          [[x1, x2, xf], [y1, y2, yf]] = vals
+        queryPoints(perlin, dDims){
+          let iFunc = (x, y) => this.index(...(perlin.slice(-2)), x, y)
+          let [f, A] = perlin.slice(0, 2)
+          let pQuery = (x, y) => this.query(f, A, iFunc, this.lFunc, this.tableSize, x, y)
+
+
+          let [w, h] = dDims
+          w = new Array(w).fill(0)
+          h = new Array(h).fill(0)
+
+          // setting up a blank array of points to be filled
+          let points = []
+
+          // using a forEach method is quicker than a for loop
+          w.forEach((_, x) => {
+            h.forEach((_, y) => {
+              points.push({"x":x,
+                           "y":y,
+                           "v":pQuery(x, y)})
+              })
+            })
+
+
+          return points
+        }
+
+        index(hash, vecs, x, y){
+          return vecs[hash[hash[x] + y]]
+        }
+
+        splitInt(v, f, tableSize){
+          v *= f
+          v %= tableSize
+          let t = Math.floor(v)
+          v -= t
+          return [t, (t + 1) % tableSize, v]
+        }
+
+        query(f, A, iFunc, lFunc, tableSize, x, y){
+          let [x1, x2, xf] = this.splitInt(x, f, tableSize)
+          let [y1, y2, yf] = this.splitInt(y, f, tableSize)
 
           let v11, v12, v21, v22
-          v11 = this.hashTable[this.hashTable[x1] + y1]
-          v12 = this.hashTable[this.hashTable[x1] + y2]
-          v21 = this.hashTable[this.hashTable[x2] + y1]
-          v22 = this.hashTable[this.hashTable[x2] + y2]
-
-          v11 = this.vecsTable[v11]
-          v12 = this.vecsTable[v12]
-          v21 = this.vecsTable[v21]
-          v22 = this.vecsTable[v22]
+          v11 = iFunc(x1, y1)
+          v12 = iFunc(x1, y2)
+          v21 = iFunc(x2, y1)
+          v22 = iFunc(x2, y2)
 
           v11 = this.dot(...v11, xf, yf)
           v12 = this.dot(...v12, xf, 1-yf)
           v21 = this.dot(...v21, 1-xf, yf)
           v22 = this.dot(...v22, 1-xf, 1-yf)
 
-          v11 = lerp(v11, v21, this.lFunc(xf))
-          v12 = lerp(v12, v22, this.lFunc(xf))
-          return lerp(v11, v12, this.lFunc(yf))
+          v11 = this.lerp(v11, v21, lFunc(xf))
+          v12 = this.lerp(v12, v22, lFunc(xf))
+          return A * this.lerp(v11, v12, lFunc(yf))
         }
 
         dot(x1, y1, x2, y2){
@@ -295,42 +264,42 @@
         lerp(v1, v2, t){
           return v1 * t + v2 * (1-t)
         }
+
       }
-
-
     </script>
     <script id="Defaults" type="text/javascript">
-      defaults = {"Custom": [[0, 0], [10, 0]],
-                  "Violet":[[0, -20],
-                            [2, -16],
-                            [4, -12],
-                            [6, -8],
-                            [8, -4],
-                            [10, 0]],
-                  "White": [[0, 0],
-                            [2, 0],
-                            [4, 0],
-                            [6, 0],
-                            [8, 0],
-                            [10, 0]],
-                  "Brown": [[0, 0],
-                            [2, -4],
-                            [4, -8],
-                            [6, -12],
-                            [8, -16],
-                            [10, -20]],
-                  "Pink":  [[0, 0],
-                            [2, -2],
-                            [4, -4],
-                            [6, -6],
-                            [8, -8],
-                            [10, -10]],
-                  "Blue":  [[0, -10],
-                            [2, -8],
-                            [4, -6],
-                            [6, -4],
-                            [8, -2],
-                            [10, 0]]}
+      defaultLevels = {"Custom":[[0, 0], [10, 0]],
+                       "Violet":[[0, -20],
+                                 [2, -16],
+                                 [4, -12],
+                                 [6, -8],
+                                 [8, -4],
+                                 [10, 0]],
+                       "White": [[0, 0],
+                                 [2, 0],
+                                 [4, 0],
+                                 [6, 0],
+                                 [8, 0],
+                                 [10, 0]],
+                       "Brown": [[0, 0],
+                                 [2, -4],
+                                 [4, -8],
+                                 [6, -12],
+                                 [8, -16],
+                                 [10, -20]],
+                       "Pink":  [[0, 0],
+                                 [2, -2],
+                                 [4, -4],
+                                 [6, -6],
+                                 [8, -8],
+                                 [10, -10]],
+                       "Blue":  [[0, -10],
+                                 [2, -8],
+                                 [4, -6],
+                                 [6, -4],
+                                 [8, -2],
+                                 [10, 0]]}
+      defaultPerlin = {}
     </script>
     <script id="Levels" type="text/javascript">
       // credit to:
@@ -338,7 +307,7 @@
       // https://bl.ocks.org/denisemauldin/538bfab8378ac9c3a32187b4d7aed2c2
 
       function initLevels(){
-        let svg = d3.select("svg"),
+        let svg = d3.select("#Levels"),
             margin = {top: 50, right: 20, bottom: 50, left: 50},
             width = +svg.attr("width") - margin.left - margin.right,
             height = +svg.attr("height") - margin.top - margin.bottom
@@ -399,6 +368,7 @@
                          .duration(T)
 
           let p = focus.select("path.line")
+          let c = focus.selectAll('circle.line')
           if(i != -1){
             p.datum(points)
              .transition(T)
@@ -413,7 +383,6 @@
            .delay(T)
            .attr("d", line)
 
-          let c = focus.selectAll('circle.line')
           c.data(points, d => d[0])
            .join(enter => enter.append('circle')
                                .attr("class", "line")
@@ -463,7 +432,7 @@
           const [x1, y1] = points[i - 1]
           const [x2, y2] = points[i + 1]
           const t = (x - x1) / (x2 - x1)
-          let y = y2 * t + y1 * (1 - t)
+          let y = lerp(y2, y1, t)
           points[i][1] = y
           return points
         }
@@ -507,7 +476,7 @@
             .select(".dropbtn")
             .text(d)
 
-          points = defaults[d]
+          points = defaultLevels[d]
           // if it's not the custom setting
           if(d != "Custom"){
             // then we perform a shallow copy to prevent the preset from being edited
@@ -522,49 +491,11 @@
         d3.select("#defaultSelect")
           .select("div.dropdown_content")
           .selectAll("a")
-          .data(Object.keys(defaults))
+          .data(Object.keys(defaultLevels))
           .enter()
           .append("a")
           .text(d => d)
           .on("click", setDefault)
-      }
-    </script>
-    <script id="Sampler", type="text/javascript">
-      // key terms:
-      // resolution - the number of points per pixel
-      let hMap = []
-
-      function genHMap(iw, ih){
-        let i, j
-        for(j = 0; j < ih; j++){
-          for(i = 0; i < iw; i++){
-            hMap.append({"x":i,
-                         "y":j,
-                         "v":0})
-          }
-        }
-      }
-
-      function sample(Perlin, iw, ih, A){
-        const k = Math.max(iw, ih) / Perlin.w
-
-        let v, x, y, i, j, data = []
-        for(j = 0; j < ih; j++){
-          y = j / k
-          for(i = 0; i < iw; i++){
-            x = i / k
-            v = Perlin.query(x, y)
-            data.append({"x":i,
-                         "y":j,
-                         "v":v * A})
-          }
-        }
-
-        return [data, iw, ih]
-      }
-
-      function draw(name, data, iw, ih){
-
       }
     </script>
     <script id="Heatmap" type="text/javascript">
@@ -572,20 +503,32 @@
       // credit to: Yan Holtz
 
       class Heatmap{
-        constructor(data, sWidth, sHeight, dWidth, dHeight){
-          this.sDims = [0, 0]
+        constructor(data, dMax, iDims, dDims){
+          this.svg = d3.select("#Perlin")
+          this.iDims = [0, 0]
           this.dDims = [0, 0]
-          let sDims = [sWidth, sHeight]
-          let dDims = [dWidth, dHeight]
-          this.changeHeatmap(data, )
+          this.changeHeatmap(data, dMax, iDims, dDims)
         }
 
-        changeHeatmap(data, dMax , sDims, dDims){
-          if(this.sDims == sDims && this.dDims == dDims){
+        // data:
+        // the 2D array of height values from the Perlin generator
+
+        // dMax:
+        // the theoretical max value for the heightmap
+        // this is NOT necessarily the max value in the heightmap
+
+        // iDims:
+        // the dimensions of the output image (in px)
+
+        // dDims:
+        // the dimensions of the data
+        // determined by iDims / resolution
+        changeHeatmap(data, dMax , iDims, dDims){
+          if(this.iDims == iDims && this.dDims == dDims){
             this.updateData(data, dMax)
           }
           else{
-            this.updateSize(data, dMax , sDims, dDims)
+            this.updateSize(data, dMax , iDims, dDims)
           }
         }
 
@@ -595,45 +538,45 @@
         updateData(data, dMax){
           let c = d3.scaleLinear()
                     .range(["white", "#69b3a2"])
-                    .domain([0, dMax])
+                    .domain([-dMax, dMax])
 
-          svg.selectAll("rect")
-             .data(data, d => (d.x + "," + d.y))
-             .update()
-             .style("fill", d => c(d.v))
+          this.svg.selectAll("rect")
+                  .data(data, d => (d.x + "," + d.y))
+                  .update()
+                  .style("fill", d => c(d.v))
         }
 
-        updateSize(data, dMax, sDims, dDims){
+        updateSize(data, dMax, iDims, dDims){
           let x = d3.scaleBand()
-                    .range([0, sDims[0]])
+                    .range([0, iDims[0]])
                     .domain([0, dDims[0]])
                     .padding(0.01)
 
           let y = d3.scaleBand()
-                    .range([sDims[1], 0])
+                    .range([iDims[1], 0])
                     .domain([0, dDims[1]])
                     .padding(0.01)
 
           let c = d3.scaleLinear()
                     .range(["white", "#69b3a2"])
-                    .domain([0, dMax])
+                    .domain([-dMax, dMax])
 
-          svg.selectAll("rect")
-             .data(data, d => (d.x + "," + d.y))
-             .join(enter => enter.append("rect")
-                                 .attr("x", d => x(d.x))
-                                 .attr("y", d => y(d.y))
-                                 .attr("width", x.bandwidth())
-                                 .attr("height", y.bandwidth())
-                                 .style("fill", d => c(d.v)),
-                   update => update.attr("x", d => x(d.x))
-                                   .attr("y", d => y(d.x))
-                                   .attr("width", x.bandwidth())
-                                   .attr("height", y.bandwidth())
-                                   .style("fill", d => c(d.v)),
-                   exit => exit.remove())
+          this.svg.selectAll("rect")
+                  .data(data, d => (d.x + "," + d.y))
+                  .join(enter => enter.append("rect")
+                                      .attr("x", d => x(d.x))
+                                      .attr("y", d => y(d.y))
+                                      .attr("width", x.bandwidth())
+                                      .attr("height", y.bandwidth())
+                                      .style("fill", d => c(d.v)),
+                        update => update.attr("x", d => x(d.x))
+                                        .attr("y", d => y(d.x))
+                                        .attr("width", x.bandwidth())
+                                        .attr("height", y.bandwidth())
+                                        .style("fill", d => c(d.v)),
+                        exit => exit.remove())
 
-          this.sDims = sDims
+          this.iDims = iDims
           this.dDims = dDims
         }
       }
@@ -645,7 +588,7 @@
       <div class="dropdown_content">
       </div>
     </div>
-    <svg id="Levels" width=1000 height=500 onload="initLevels()"></svg>
+    <svg id="Levels" width=1000 height=500 onload="initPerlin()"></svg>
     <svg id="Perlin"></svg>
     <p id="label">Placeholder</p>
   </body>
