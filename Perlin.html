@@ -72,7 +72,7 @@
     - use dragended to update the Amplitude of parts of the map
     -->
     <script src="https://d3js.org/d3.v5.min.js"></script>
-    <script id="Vector" type="text/javascript">
+    <script id="Vector.js" type="text/javascript">
       class Vector{
         constructor(x, y){
           this.x = x
@@ -107,13 +107,106 @@
         }
       }
     </script>
-    <script id="PerlinFuncs" type="text/javascript">
-      class Perlin{
-        constructor(fData, lFunc){
+    <script id="Heatmap.js" type="text/javascript">
+      // taken from https://www.d3-graph-gallery.com/graph/heatmap_basic.html
+      // credit to: Yan Holtz
+
+      class Heatmap{
+        constructor(){
+          this.svg = d3.select("#Heatmap")
+          this.iDims = [+this.svg.attr("width"), +this.svg.attr("height")]
+          this.dDims = [0, 0]
+        }
+
+        // data:
+        // the 2D array of height values from the Perlin generator
+
+        // dMax:
+        // the theoretical max value for the heightmap
+        // this is NOT necessarily the max value in the heightmap
+
+        // iDims:
+        // the dimensions of the output image (in px)
+
+        // dDims:
+        // the dimensions of the data
+        // determined by iDims / resolution
+        changeHeatmap(data, dMax, dDims){
+          console.log(data)
+          console.log(dDims)
+          dMax = data.reduce((x, v) => v["v"]>x?v["v"]:x, 0)
+          if(this.dDims[0] == dDims[0] && this.dDims[1] == dDims[1]){
+            console.log("updating data")
+            this.updateData(data, dMax)
+          }
+          else{
+            console.log("updating size")
+            this.updateSize(data, dMax, dDims)
+          }
+        }
+
+        // handles the case where only the colours of the heatmap need to be updated
+        // this case is relatively simple
+        // we don't even need to update the positions or the translate functions
+        updateData(data, dMax){
+          console.log(data)
+          let c = d3.scaleSequential()
+                    .interpolator(defaultPerlin.cScale)
+                    .domain([-dMax, dMax])
+
+          this.svg.selectAll("rect")
+                  .data(data, d => (d.x + "," + d.y))
+                  .join(enter => enter,
+                        update => update.style("fill", d => c(d.v)),
+                        exit => exit)
+        }
+
+        updateSize(data, dMax, dDims){
+          let x = d3.scaleBand()
+                    .range([0, this.iDims[0]])
+                    .domain([...Array(dDims[0]).keys()])
+
+          let y = d3.scaleBand()
+                    .range([0, this.iDims[1]])
+                    .domain([...Array(dDims[1]).keys()])
+
+          let c = d3.scaleSequential()
+                    .interpolator(defaultPerlin.cScale)
+                    .domain([-dMax, dMax])
+
+          this.svg.selectAll("rect")
+                  .data(data, d => (d.x + "," + d.y))
+                  .join(enter => enter.append("rect")
+                                      .attr("x", d => x(d.x))
+                                      .attr("y", d => y(d.y))
+                                      .attr("width", x.bandwidth())
+                                      .attr("height", y.bandwidth())
+                                      .style("fill", d => c(d.v)),
+                        update => update.attr("x", d => x(d.x))
+                                        .attr("y", d => y(d.x))
+                                        .attr("width", x.bandwidth())
+                                        .attr("height", y.bandwidth())
+                                        .style("fill", d => c(d.v)),
+                        exit => exit.remove())
+
+
+          this.dDims = dDims
+        }
+      }
+    </script>
+    <script id="Perlin.js" type="text/javascript">
+      class Perlin extends Heatmap{
+        constructor(lFunc, res){
+          super()
+          this.resolution = res
           this.tableSize = 256
           this.lFunc = lFunc
           this.perlinVals = []
-          fData.forEach(d => this.addLevel(d))
+        }
+
+        set res(val){
+          this.resolution = val
+          this.changeHeatmap(this.getData(), this.getMaxVal())
         }
 
         printLevels(){
@@ -124,9 +217,16 @@
           return rows[0].map((_, c) => rows.map(row => row[c]))
         }
 
-        getData(dDims, transform){
+        updateHMap(){
+          let dDims = this.iDims.map(x => Math.floor(x/this.resolution))
+          this.changeHeatmap(this.getData(dDims), this.getMaxVal(), dDims)
+        }
+
+        getData(dDims){
           let perlinData = this.perlinVals.map(pDatum => {
-            return this.queryPoints(pDatum, dDims)
+            let f = pDatum[0]/this.resolution
+            let d = [f, ...pDatum.slice(1)]
+            return this.queryPoints(d, dDims)
           })
           return this.zip(perlinData).map(r => {
             return r.reduce((v,d) => {
@@ -140,26 +240,44 @@
           return this.perlinVals.reduce((a, b) => a + b[1], 0) * 2**1.5
         }
 
-        addLevel(fDatum){
-          this.perlinVals.push(this.getLevel(fDatum))
+        modFDatum(fDatum){
+          return [2**fDatum[0], 2**fDatum[1]]
         }
 
-        updateLevel(fDatum){
-          let [i, d] = this.fIndex(fDatum[0])
+        addLevel(fDatum){
+          console.log("adding level")
+          fDatum = this.modFDatum(fDatum)
+          let data = this.getLevel(fDatum)
+          console.log(data)
+          this.perlinVals.push(data)
+          console.log(this.perlinVals)
+          console.log("done")
+        }
+
+        editLevel(fDatum){
+          console.log("editing level")
+          fDatum = this.modFDatum(fDatum)
+          let [d, i] = this.fIndex(fDatum[0])
           if(i == -1){
-            console.log("ERROR: Trying to edit a non-existant layer.")
-            console.log("This shouldn't happen, adding a new layer instead")
+            console.warn("Trying to edit a non-existant layer.")
+            console.warn("This shouldn't happen, adding a new layer instead")
             this.addLevel(fDatum)
           }
-          else if(fDatum[1] == d[1]){
-            this.perlinVals[i] = this.getLevel(fDatum)
+          else if(fDatum[1] != d[1]){
+            console.log("changing amplitude")
+            this.perlinVals[i][1] = fDatum[1]
+            console.log(fDatum)
+            console.log(this.perlinVals)
           }
           else{
-            this.perlinVals[i][1] = fDatum[1]
+            console.log("refreshing level")
+            fDatum = this.getLevel(fDatum)
+            this.perlinVals[i] = fDatum
           }
         }
 
-        removeLevel(fDatum){
+        delLevel(fDatum){
+          fDatum = this.modFDatum(fDatum)
           this.perlinVals = this.perlinVals.filter(d => d[0] != fDatum[0])
         }
 
@@ -168,16 +286,18 @@
         }
 
         fIndex(f){
-          return this.perlinVals.reduce((x, v, i) => v[0]==f?i:[x, v], -1)
+          return this.perlinVals.reduce((x, v, i) => v[0]==f?x:[v, i], [-1, -1])
         }
 
         generateVecs(){
           let v = new Array(this.tableSize).fill(0)
 
           function genVec(v, i){
-            let a = Math.random() * Math.PI * 2
-            let x = Math.sin(a)
-            let y = Math.cos(a)
+            let t = Math.random() * Math.PI * 2
+            let A = Math.random()
+            A = 1
+            let x = A * Math.sin(t)
+            let y = A * Math.cos(t)
             return [x, y]
           }
 
@@ -199,9 +319,9 @@
           return h
         }
 
-        queryPoints(perlin, dDims){
-          let iFunc = (x, y) => this.index(...(perlin.slice(-2)), x, y)
-          let [f, A] = perlin.slice(0, 2)
+        queryPoints(layer, dDims){
+          let iFunc = (x, y) => this.index(...(layer.slice(-2)), x, y)
+          let [f, A] = layer.slice(0, 2)
           let pQuery = (x, y) => this.query(f, A, iFunc, this.lFunc, this.tableSize, x, y)
 
 
@@ -218,9 +338,8 @@
               points.push({"x":x,
                            "y":y,
                            "v":pQuery(x, y)})
-              })
             })
-
+          })
 
           return points
         }
@@ -230,7 +349,7 @@
         }
 
         splitInt(v, f, tableSize){
-          v *= f
+          v /= f
           v %= tableSize
           let t = Math.floor(v)
           v -= t
@@ -238,14 +357,14 @@
         }
 
         query(f, A, iFunc, lFunc, tableSize, x, y){
-          let [x1, x2, xf] = this.splitInt(x, f, tableSize)
-          let [y1, y2, yf] = this.splitInt(y, f, tableSize)
+          let [x0, x1, xf] = this.splitInt(x, f, tableSize)
+          let [y0, y1, yf] = this.splitInt(y, f, tableSize)
 
           let v11, v12, v21, v22
-          v11 = iFunc(x1, y1)
-          v12 = iFunc(x1, y2)
-          v21 = iFunc(x2, y1)
-          v22 = iFunc(x2, y2)
+          v11 = iFunc(x0, y0)
+          v12 = iFunc(x0, y1)
+          v21 = iFunc(x1, y0)
+          v22 = iFunc(x1, y1)
 
           v11 = this.dot(...v11, xf, yf)
           v12 = this.dot(...v12, xf, 1-yf)
@@ -254,6 +373,7 @@
 
           v11 = this.lerp(v11, v21, lFunc(xf))
           v12 = this.lerp(v12, v22, lFunc(xf))
+
           return A * this.lerp(v11, v12, lFunc(yf))
         }
 
@@ -262,51 +382,47 @@
         }
 
         lerp(v1, v2, t){
-          return v1 * t + v2 * (1-t)
+          return v1 * (1 - t) + v2 * t
         }
 
       }
     </script>
-    <script id="Defaults" type="text/javascript">
+    <script id="Defaults.js" type="text/javascript">
       defaultLevels = {"Custom":[[0, 0], [10, 0]],
                        "Violet":[[0, -20],
                                  [2, -16],
                                  [4, -12],
                                  [6, -8],
-                                 [8, -4],
-                                 [10, 0]],
+                                 [8, -4]],
                        "White": [[0, 0],
                                  [2, 0],
                                  [4, 0],
                                  [6, 0],
-                                 [8, 0],
-                                 [10, 0]],
+                                 [8, 0]],
                        "Brown": [[0, 0],
                                  [2, -4],
                                  [4, -8],
                                  [6, -12],
-                                 [8, -16],
-                                 [10, -20]],
+                                 [8, -16]],
                        "Pink":  [[0, 0],
                                  [2, -2],
                                  [4, -4],
                                  [6, -6],
-                                 [8, -8],
-                                 [10, -10]],
+                                 [8, -8]],
                        "Blue":  [[0, -10],
                                  [2, -8],
                                  [4, -6],
                                  [6, -4],
-                                 [8, -2],
-                                 [10, 0]]}
-      defaultPerlin = {}
+                                 [8, -2]]}
+      defaultPerlin = {"lFunc": t => 6*t**5-15*t**4+10*t**3,
+                       "cScale": d3.interpolateViridis}
     </script>
-    <script id="Levels" type="text/javascript">
+    <script id="Levels.js" type="text/javascript">
       // credit to:
       // Denise Mauldin (draggable line graph)
       // https://bl.ocks.org/denisemauldin/538bfab8378ac9c3a32187b4d7aed2c2
 
-      function initLevels(){
+      function initLevels(perlin, defaultLevels, defaultLevel){
         let svg = d3.select("#Levels"),
             margin = {top: 50, right: 20, bottom: 50, left: 50},
             width = +svg.attr("width") - margin.left - margin.right,
@@ -358,7 +474,7 @@
              .attr("y", -40)
              .text("Amplitude (log2)")
 
-        x.domain([0, 10])
+        x.domain([0, 8])
         y.domain([-20, 0])
         y.clamp(true)
 
@@ -387,22 +503,27 @@
            .join(enter => enter.append('circle')
                                .attr("class", "line")
                                .attr('r', 5.0)
-                               .attr('cx', function(d) { return x(d[0])  })
-                               .attr('cy', function(d) { return y(d[1]) })
+                               .attr('cx', d => x(d[0]))
+                               .attr('cy', d => y(d[1]))
                                .on("click", removePoint)
+                               .each(d => perlin.addLevel(d))
                                .call(enter => {
                                return enter.transition(t)
                                            .style("opacity", 1)})
                                .call(drag),
-                 update => update.call(update => {
+                 update => update.each(d => perlin.editLevel(d))
+                                 .call(update => {
                                  return update.transition(t)
                                               .attr('cx', d => x(d[0]))
                                               .attr('cy', d => y(d[1]))
                                  }),
-                 exit => exit.call(exit => {
+                 exit => exit.each(d => perlin.delLevel(d))
+                             .call(exit => {
                              return exit.transition(t)
                                         .style("opacity", 0)
                                         .remove()}))
+
+          perlin.updateHMap()
         }
 
         function addPoint(d){
@@ -432,7 +553,7 @@
           const [x1, y1] = points[i - 1]
           const [x2, y2] = points[i + 1]
           const t = (x - x1) / (x2 - x1)
-          let y = lerp(y2, y1, t)
+          let y = y2 * t + y1 * (1 - t)
           points[i][1] = y
           return points
         }
@@ -442,7 +563,6 @@
 
         focus.append("path")
              .attr("class", "line")
-        setDefault("Custom")
 
         focus.append('g')
              .attr('class', 'axis axis--x')
@@ -467,6 +587,8 @@
 
         function dragended(d) {
           d3.select(this).classed('active', false)
+          perlin.editLevel(d)
+          perlin.updateHMap()
         }
 
         // updates the Levels graph with one of the default set of points
@@ -496,100 +618,25 @@
           .append("a")
           .text(d => d)
           .on("click", setDefault)
+
+        setDefault(defaultLevel)
       }
     </script>
-    <script id="Heatmap" type="text/javascript">
-      // taken from https://www.d3-graph-gallery.com/graph/heatmap_basic.html
-      // credit to: Yan Holtz
-
-      class Heatmap{
-        constructor(data, dMax, iDims, dDims){
-          this.svg = d3.select("#Perlin")
-          this.iDims = [0, 0]
-          this.dDims = [0, 0]
-          this.changeHeatmap(data, dMax, iDims, dDims)
-        }
-
-        // data:
-        // the 2D array of height values from the Perlin generator
-
-        // dMax:
-        // the theoretical max value for the heightmap
-        // this is NOT necessarily the max value in the heightmap
-
-        // iDims:
-        // the dimensions of the output image (in px)
-
-        // dDims:
-        // the dimensions of the data
-        // determined by iDims / resolution
-        changeHeatmap(data, dMax , iDims, dDims){
-          if(this.iDims == iDims && this.dDims == dDims){
-            this.updateData(data, dMax)
-          }
-          else{
-            this.updateSize(data, dMax , iDims, dDims)
-          }
-        }
-
-        // handles the case where only the colours of the heatmap need to be updated
-        // this case is relatively simple
-        // we don't even need to update the positions or the translate functions
-        updateData(data, dMax){
-          let c = d3.scaleLinear()
-                    .range(["white", "#69b3a2"])
-                    .domain([-dMax, dMax])
-
-          this.svg.selectAll("rect")
-                  .data(data, d => (d.x + "," + d.y))
-                  .update()
-                  .style("fill", d => c(d.v))
-        }
-
-        updateSize(data, dMax, iDims, dDims){
-          let x = d3.scaleBand()
-                    .range([0, iDims[0]])
-                    .domain([0, dDims[0]])
-                    .padding(0.01)
-
-          let y = d3.scaleBand()
-                    .range([iDims[1], 0])
-                    .domain([0, dDims[1]])
-                    .padding(0.01)
-
-          let c = d3.scaleLinear()
-                    .range(["white", "#69b3a2"])
-                    .domain([-dMax, dMax])
-
-          this.svg.selectAll("rect")
-                  .data(data, d => (d.x + "," + d.y))
-                  .join(enter => enter.append("rect")
-                                      .attr("x", d => x(d.x))
-                                      .attr("y", d => y(d.y))
-                                      .attr("width", x.bandwidth())
-                                      .attr("height", y.bandwidth())
-                                      .style("fill", d => c(d.v)),
-                        update => update.attr("x", d => x(d.x))
-                                        .attr("y", d => y(d.x))
-                                        .attr("width", x.bandwidth())
-                                        .attr("height", y.bandwidth())
-                                        .style("fill", d => c(d.v)),
-                        exit => exit.remove())
-
-          this.iDims = iDims
-          this.dDims = dDims
-        }
+    <script id="Main.js" type="text/javascript">
+      function init(){
+        let p = new Perlin(defaultPerlin["lFunc"], 2)
+        initLevels(p, defaultLevels, "Violet")
       }
     </script>
   </head>
-  <body>
+  <body  onload="init()">
     <div class="dropdown" id="defaultSelect">
       <button class="dropbtn">Noise Type</button>
       <div class="dropdown_content">
       </div>
     </div>
-    <svg id="Levels" width=1000 height=500 onload="initPerlin()"></svg>
-    <svg id="Perlin"></svg>
+    <svg id="Levels" width=1000 height=500></svg>
+    <svg id="Heatmap" width=500 height=500></svg>
     <p id="label">Placeholder</p>
   </body>
 </html>
