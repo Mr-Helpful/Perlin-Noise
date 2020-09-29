@@ -240,23 +240,15 @@
           return this.perlinVals.reduce((a, b) => a + b[1], 0) * 2**1.5
         }
 
-        modFDatum(fDatum){
-          return [2**fDatum[0], 2**fDatum[1]]
-        }
-
         addLevel(fDatum){
-          console.log("adding level")
           fDatum = this.modFDatum(fDatum)
           let data = this.getLevel(fDatum)
-          console.log(data)
           this.perlinVals.push(data)
-          console.log(this.perlinVals)
-          console.log("done")
         }
 
         editLevel(fDatum){
           console.log("editing level")
-          fDatum = this.modFDatum(fDatum)
+          fDatum = [2**fDatum[0], 2**fDatum[1]]
           let [d, i] = this.fIndex(fDatum[0])
           if(i == -1){
             console.warn("Trying to edit a non-existant layer.")
@@ -266,8 +258,6 @@
           else if(fDatum[1] != d[1]){
             console.log("changing amplitude")
             this.perlinVals[i][1] = fDatum[1]
-            console.log(fDatum)
-            console.log(this.perlinVals)
           }
           else{
             console.log("refreshing level")
@@ -286,7 +276,7 @@
         }
 
         fIndex(f){
-          return this.perlinVals.reduce((x, v, i) => v[0]==f?x:[v, i], [-1, -1])
+          return this.perlinVals.reduce((x, v, i) => v[0]==f?[v, i]:x, [-1, -1])
         }
 
         generateVecs(){
@@ -417,13 +407,118 @@
       defaultPerlin = {"lFunc": t => 6*t**5-15*t**4+10*t**3,
                        "cScale": d3.interpolateViridis}
     </script>
+    <script id="LevelClass.js" type="text/javascript">
+      class Levels{
+        constructor(perlin, defaults, defaultName){
+          this.points = []
+          this.perlin = perlin
+          this.svg = d3.select("#Levels")
+
+          this.setupLevels(defaults, defaultName)
+        }
+
+        setupLevels(defaults, defaultName){
+          let dims = this.getDims(defaults["margin"])
+          this.createFocus(defaults["margin"])
+          this.createAxis(dims, defaults["margin"])
+          let dragFunc = this.createDraggable()
+        }
+
+        getDims(margin){
+          w = +this.svg.attr("width") - margin.left - margin.right,
+          h = +this.svg.attr("height") - margin.top - margin.bottom
+          return [w, h]
+        }
+
+        createFocus(dims, margin){
+          svg.append('rect')
+             .attr('class', 'zoom')
+             .attr('fill', 'none')
+             .attr('pointer-events', 'all')
+             .attr('width', dims[0])
+             .attr('height', dims[1])
+             .attr('transform', 'translate(' + margin.left + ',' + margin.top + ')')
+
+          this.focus = svg.append("g")
+                          .attr("transform", "translate(" + margin.left + "," + margin.top + ")")
+        }
+
+        createAxis(dims, margin){
+          this.addAxisLine(dims, margin)
+          this.addAxisLabels(dims)
+        }
+
+        addAxisLine(dims, margin){
+          this.x = d3.scaleLinear()
+                    .rangeRound([0, dims[0]])
+                    .domain([0, 8])
+
+          this.focus.append('g')
+                    .attr('class', 'axis axis--x')
+                    .attr('transform', 'translate(0,' + height + ')')
+                    .call(d3.axisBottom(this.x))
+
+          this.y = d3.scaleLinear()
+                    .rangeRound([0, dims[1]])
+                    .domain([-20, 0])
+                    .clamp(true)
+
+          this.focus.append('g')
+                    .attr('class', 'axis axis--y')
+                    .call(d3.axisLeft(this.y))
+        }
+
+        addAxisLabels(dims){
+          this.focus.append("text")
+                    .attr("class", "x label")
+                    .attr("text-anchor", "top")
+                    .attr("x", dims[0] / 2 - 50)
+                    .attr("y", dims[1] + 40)
+                    .text("Frequency (log2)")
+
+          this.focus.append("text")
+                    .attr("class", "y label")
+                    .attr("text-anchor", "top")
+                    .attr("transform", "rotate(-90)")
+                    .attr("x", -dims[1] / 2 - 50)
+                    .attr("y", -40)
+                    .text("Amplitude (log2)")
+        }
+
+        createDraggable(){
+          //let perlin, x, y, line = this.perlin, this.x, this.y, this.line
+          function dragstarted(d){
+            d3.select(this).raise().classed('active', true)
+          }
+
+          function dragged(d){
+            d[1] = y.invert(d3.event.y)
+            d3.select(this)
+              .attr('cx', x(d[0]))
+              .attr('cy', y(d[1]))
+            focus.select('path').attr('d', line)
+          }
+
+          function dragended(d){
+            d3.select(this).classed('active', false)
+            perlin.editLevel(d)
+            perlin.updateHMap()
+          }
+        }
+
+        return d3.drag()
+                 .on("start", dragstarted)
+                 .on("drag",  dragged)
+                 .on("end",   dragended)
+      }
+    </script>
     <script id="Levels.js" type="text/javascript">
       // credit to:
       // Denise Mauldin (draggable line graph)
       // https://bl.ocks.org/denisemauldin/538bfab8378ac9c3a32187b4d7aed2c2
 
       function initLevels(perlin, defaultLevels, defaultLevel){
-        let svg = d3.select("#Levels"),
+        let svg = d3.select("#Levels"),//<
             margin = {top: 50, right: 20, bottom: 50, left: 50},
             width = +svg.attr("width") - margin.left - margin.right,
             height = +svg.attr("height") - margin.top - margin.bottom
@@ -435,18 +530,20 @@
                   .rangeRound([height, 0])
 
         let xAxis = d3.axisBottom(x),
-            yAxis = d3.axisLeft(y)
+            yAxis = d3.axisLeft(y)//>
 
         let line = d3.line()
                      .x(function(d) { return x(d[0]) })
                      .y(function(d) { return y(d[1]) })
 
-        let drag = d3.drag()
+        let drag = d3.drag()//<
                      .on('start', dragstarted)
                      .on('drag', dragged)
                      .on('end', dragended)
 
+
         let points = []
+
 
         svg.append('rect')
            .attr('class', 'zoom')
@@ -476,7 +573,7 @@
 
         x.domain([0, 8])
         y.domain([-20, 0])
-        y.clamp(true)
+        y.clamp(true)//>
 
         function updateGraph(points, i = -1){
           T = 500
@@ -487,7 +584,7 @@
           let c = focus.selectAll('circle.line')
           if(i != -1){
             p.datum(points)
-             .transition(T)
+             .transition(t)
              .attr("d", line)
 
             points.splice(i, 1)
@@ -557,9 +654,6 @@
           points[i][1] = y
           return points
         }
-
-        focus.selectAll('circle')
-             .call(drag)
 
         focus.append("path")
              .attr("class", "line")
