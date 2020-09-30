@@ -132,8 +132,6 @@
         // the dimensions of the data
         // determined by iDims / resolution
         changeHeatmap(data, dMax, dDims){
-          console.log(data)
-          console.log(dDims)
           dMax = data.reduce((x, v) => v["v"]>x?v["v"]:x, 0)
           if(this.dDims[0] == dDims[0] && this.dDims[1] == dDims[1]){
             console.log("updating data")
@@ -149,7 +147,6 @@
         // this case is relatively simple
         // we don't even need to update the positions or the translate functions
         updateData(data, dMax){
-          console.log(data)
           let c = d3.scaleSequential()
                     .interpolator(defaultPerlin.cScale)
                     .domain([-dMax, dMax])
@@ -202,6 +199,22 @@
           this.tableSize = 256
           this.lFunc = lFunc
           this.perlinVals = []
+          this.perlinData = []
+          this.updateDataDims()
+        }
+
+        updateDataDims(){
+          let [w, h] = this.iDims.map(x => Math.floor(x/this.resolution))
+          w = new Array(w).fill(0)
+          h = new Array(h).fill(0)
+
+          w.forEach((_, x) => {
+            h.forEach((_, y) => {
+              this.perlinData.push({"x":x,
+                                    "y":y,
+                                    "v":0})
+            })
+          })
         }
 
         set res(val){
@@ -219,20 +232,27 @@
 
         updateHMap(){
           let dDims = this.iDims.map(x => Math.floor(x/this.resolution))
+          console.log("changing heatmap")
           this.changeHeatmap(this.getData(dDims), this.getMaxVal(), dDims)
         }
 
         getData(dDims){
-          let perlinData = this.perlinVals.map(pDatum => {
-            let f = pDatum[0]/this.resolution
-            let d = [f, ...pDatum.slice(1)]
-            return this.queryPoints(d, dDims)
+          this.perlinVals.forEach(l => {
+            console.log(l)
+            return this.addToData(l)
           })
-          return this.zip(perlinData).map(r => {
-            return r.reduce((v,d) => {
-              v["v"] += d["v"]
-              return v
-            })
+          return this.perlinData
+        }
+
+        // this assumes the data to be added has the same dimensions as the pre-existing data
+        addToData(level){
+          let dDims = this.iDims.map(x => Math.floor(x/this.resolution))
+
+          // this fixes a bug where the level would be replaced with just its frequency
+          level = [...level]
+          let d = [level[0]/this.resolution] + level.splice(1)
+          this.queryPoints(d, dDims).forEach((v, i) => {
+            this.perlinData[i]["v"] += v["v"]
           })
         }
 
@@ -241,7 +261,7 @@
         }
 
         addLevel(fDatum){
-          fDatum = this.modFDatum(fDatum)
+          fDatum = [2**fDatum[0], 2**fDatum[1]]
           let data = this.getLevel(fDatum)
           this.perlinVals.push(data)
         }
@@ -261,13 +281,12 @@
           }
           else{
             console.log("refreshing level")
-            fDatum = this.getLevel(fDatum)
-            this.perlinVals[i] = fDatum
+            this.perlinVals[i] = this.getLevel(fDatum)
           }
         }
 
         delLevel(fDatum){
-          fDatum = this.modFDatum(fDatum)
+          fDatum = [2**fDatum[0], 2**fDatum[1]]
           this.perlinVals = this.perlinVals.filter(d => d[0] != fDatum[0])
         }
 
@@ -310,8 +329,8 @@
         }
 
         queryPoints(layer, dDims){
-          let iFunc = (x, y) => this.index(...(layer.slice(-2)), x, y)
-          let [f, A] = layer.slice(0, 2)
+          let [f, A, hash, vecs] = layer
+          let iFunc = (x, y) => vecs[hash[hash[x] + y]]
           let pQuery = (x, y) => this.query(f, A, iFunc, this.lFunc, this.tableSize, x, y)
 
 
@@ -332,10 +351,6 @@
           })
 
           return points
-        }
-
-        index(hash, vecs, x, y){
-          return vecs[hash[hash[x] + y]]
         }
 
         splitInt(v, f, tableSize){
