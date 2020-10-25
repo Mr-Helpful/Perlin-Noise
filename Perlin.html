@@ -46,7 +46,6 @@
     <script src="https://d3js.org/d3.v5.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.2.1/jquery.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jqueryui/1.12.1/jquery-ui.min.js"></script>
-    <script id="PerlinLibrary.js" src="perlin.js"></script>
     <script id="Defaults.js" type="text/javascript">
       defaultLevels = {"points":[["Custom",
                                   "#00cc66",
@@ -94,30 +93,18 @@
       cScales = {"viridis":["#440154","#482878","#3e4989","#31688e","#26828e","#1f9e89","#35b779","#6ece58","#b5de2b","#fde725"],
       "earthScale":["#100154", "#1161b8", "#52c0d9", "#6ed63a", "#a5d98b", "#ffffff"]}
     </script>
-    <script id="Fades.js" type="text/javascript">
-      // these helpers are based on creating a rendering function
-      // this is to be used in the Perlin class
-      function fadeScale(s, e, v){
-        return s.map((x, i) => Math.floor(x*(1-v)+e[i]*v))
-      }
-
-      // this function assumes all the shades are equally spaced
-      function multiFade(shades, v){
-        let f = Math.max(Math.min(v, 0.9999), 0) * (shades.length - 1)
-        v = Math.floor(f)
-        return fadeScale(shades[v], shades[v + 1], f-v)
-      }
-
-      function hexToRgba(hex){
-        return [parseInt(hex.slice(1, 3), 16),
-                parseInt(hex.slice(3, 5), 16),
-                parseInt(hex.slice(5, 7), 16),
-                255]
-      }
-
-      function hexFade(hexList){
-        let shades = hexList.map(hexToRgba)
-        return multiFade.bind(null, shades)
+    <script src="Perlin.js"></script>
+    <script src="Fades.js"></script>
+    <script id="Circles.js" type="text/javascript">
+      function circleKernel(r, fade = t=>1){
+        r--
+        let l = 2*r + 1
+        return [...Array(l).keys()].map(y => {
+          return [...Array(l).keys()].map(x => {
+            let t = 1 - Math.sqrt((x-r)*(x-r) + (y-r)*(y-r))/r
+            return t < 0? 0: fade(t)
+          })
+        })
       }
     </script>
     <script id="Resizer.js" type="text/javascript">
@@ -139,6 +126,7 @@
           this.res = res
           this.cMap = colourMap
           this.perlinLevels = []
+          this.pFlag = false
 
           // an empty list, to be filled with Amplitudes
           // these represent the z position on the heatmap
@@ -146,6 +134,8 @@
         }
 
         // a generic method used to fully reset the perlin heatmap
+        // unfortunately, we don't save the perlin map
+        // this means the time complexity is O(n) (dependant on the number of levels)
         resetMaps(){
           let [w, h] = this.iDims = [this.canvas.width, this.canvas.height]
           this.perlinMap = new Array(w*h).fill(0)
@@ -156,10 +146,76 @@
           }
         }
 
+        // enables drawing on the canvas using the specified kernel as a brush
+        enableDrawing(kernel, A, T){
+          this.mx = this.my = 0
+
+          // we actually need to define these functions before using them
+          // as we need to have Exactly the same function to remove the event listener
+          this.downEvent = this.startDrawing.bind(this, kernel, A, T)
+          this.moveEvent = this.moveBrush.bind(this)
+          this.upEvent = this.endDrawing.bind(this)
+          this.canvas.addEventListener("mousedown", this.downEvent)
+          this.canvas.addEventListener("mousemove", this.moveEvent)
+          this.canvas.addEventListener("mouseup", this.upEvent)
+        }
+
+        disableDrawing(){
+          this.canvas.removeEventListener("mousedown", this.downEvent)
+          this.canvas.removeEventListener("mousemove", this.moveEvent)
+          this.canvas.removeEventListener("mouseup", this.upEvent)
+        }
+
+        startDrawing(kernel, A, T, e){
+          let addFunc = this.kernelAdd.bind(this, kernel, A)
+          this.drawInterval = setInterval(addFunc, T)
+        }
+
+        moveBrush(e){
+          let rect = e.target.getBoundingClientRect()
+          this.mx = e.clientX - rect.left //x position within the element.
+          this.my = e.clientY - rect.top  //y position within the element.
+        }
+
+        endDrawing(e){
+          clearInterval(this.drawInterval)
+        }
+
+        // adds a specified kernel at a specified (x, y) coordinate on the board
+        kernelAdd(kernel, A){
+          let x = Math.floor(this.mx/this.res)
+          let y = Math.floor(this.my/this.res)
+          // this is the wrong way around for an m*n matrix but it fits the w, h convention
+          let [m, n] = [kernel[0].length, kernel.length].map(d => Math.floor(d/2))
+          let [w, h] = this.iDims.map(d => Math.floor(d/this.res))
+
+          // clamps the center offsets for the kernel
+          // to ensure the kernel isn't applied to points outside the image
+          let i = [Math.min(m, x), Math.min(m, w-x)]
+          let j = [Math.min(n, y), Math.min(n, h-y)]
+
+          // determines the offset to the top left corner of the kernel
+          let kx = x-m
+          let ky = y-n
+
+          // determines the range to take from the kernel
+          let kxr = [m-i[0], m+i[1]+1]
+          let kyr = [n-j[0], n+j[1]+1]
+
+          for(x=kxr[0]; x<kxr[1]; x++){
+            for(y=kyr[0]; y<kyr[1]; y++){
+              i = (x+kx)*this.res
+              j = (y+ky)*this.res
+              this.addToSection(i, j, kernel[y][x]*A)
+            }
+          }
+          this.redrawMap()
+        }
+
         addToData(level){
           // unpack level and bring into cache
           let [f, A, s] = level
-          let [w, h] = this.iDims//.map(d => Math.floor(d/this.res))
+          let [w, h] = this.iDims
           noise.seed(s)
 
           // we find use the longer side to ensure that only one repetition is shown on canvas
@@ -167,8 +223,8 @@
           let m = Math.max(w, h)
 
           // loop over all the positions in the perlin grid
-          for(var y = 0; y < h; y+=this.res){
-            for(var x = 0; x < w; x+=this.res){
+          for(var y = 0; y < h; y += this.res){
+            for(var x = 0; x < w; x += this.res){
               // generate the noise with a range of 0 -> 1
               s = noise.perlin2(x*f/m, y*f/m)
 
@@ -184,54 +240,75 @@
           // define temp early on as we will be using it multiple times
           // to be frank, it isn't needed, but it helps with readability
           // and a tiny little bit with speed
-          let t
+          let t, w = this.iDims[0]
 
           // iterates over all the offsets used in the square
           for(var i = 0; i < this.res; i++){
             for(var j = 0; j < this.res; j++){
-              t = ((y+j)*this.iDims[0])+(x+i)
-              this.perlinMap[Math.min(t, this.maxLength)] += val
+              if(x+i < w){
+                t = ((y+j)*this.iDims[0])+(x+i)
+                this.perlinMap[Math.min(t, this.maxLength)] += val
+              }
             }
           }
         }
 
+        // adds a new level to the pre-existing data
         addLevel(point){
           let nLevel = this.getLevel(point)
           this.perlinLevels.push(nLevel)
           this.addToData(nLevel)
-          this.drawMap()
+          this.redrawMap()
         }
 
+        // edits a given level
         editLevel(point){
           let [f, A, _] = this.getLevel(point)
           let [l, i] = this.fetchLevel(f)
+
+          // if we can't find the level among the existing ones
+          // this shouldn't happen
           if(i == -1){
             console.warn("This level does not exist, creating a new one instead")
             this.addLevel([f, A])
           }
+
+          // if the Amplitude has been changed
           else if(A != l[1]){
             this.addToData([l[0], A-l[1], l[2]])
             this.perlinLevels[i][1] = A
           }
+
+          // otherwise we assume the level has been "reset"
           else{
             this.delLevel(point)
             this.addLevel(point)
           }
-          this.drawMap()
+          this.redrawMap()
         }
 
+        // deletes a level from the data and redraws the map
+        // this is done in order O(1) time (dependant on the number of levels)
         delLevel(point){
           let [f, A, _] = this.getLevel(point)
           let [l, i] = this.fetchLevel(f)
           this.addToData([l[0], -l[1], l[2]])
           this.perlinLevels.splice(i, 1)
-          this.drawMap()
+          this.redrawMap()
         }
 
+        // translates the data from a point to a level
         getLevel(point){
+          // a new level also includes a random seed
           return [2**point[0], 2**point[1], Math.random()]
         }
 
+        // fetches a level with a matching frequency
+        // we don't use a dictionary as:
+        // 1) it is extremely unlikely that we will ever have more than 10 levels
+        //    hence O(n) is an acceptable time complexity
+        // 2) using an array makes it much more simple to iterate over the levels
+        //    iterating over the levels is used to set a default
         fetchLevel(f){
           // this:
           // l[0]==f?[[...l], i]:acc
@@ -244,13 +321,13 @@
         // function used to draw the terrain map
         // should take a value from 0 -> 1
         // and return a list of 4 values from 0 -> 255, representing RGBA values
-        drawMap(){
+        redrawMap(){
           let max = this.perlinLevels.reduce((acc, v) => v[1]+acc, 0) * (2**0.5)
           let img = this.ctx.createImageData(...this.iDims)
           let rgba
 
           for(var i in this.perlinMap){
-            rgba = this.cMap(0.5 - this.perlinMap[i]/max)
+            rgba = this.cMap(this.perlinMap[i]/max + 0.5)
             img.data[4*i + 0] = rgba[0]
             img.data[4*i + 1] = rgba[1]
             img.data[4*i + 2] = rgba[2]
@@ -263,11 +340,15 @@
         }
       }
 
+      function range(start, end){
+        return [...Array(end-start).keys()].map(d => d+start)
+      }
+
       function testDrawSpeed(pMap, n = 100){
         console.log("starting test...")
         let t = performance.now()
         for(var x = 0; x < n; x++){
-          pMap.drawMap()
+          pMap.redrawMap()
         }
         t = Math.floor((performance.now()-t)/n)
         console.log("drawing the heatmap took: " + t + "ms on average")
@@ -280,12 +361,12 @@
           this.perlin = perlin
           this.svg = d3.select("#Levels")
 
-          this.setupLevels(defaults, defaultName)
+          this.setupLevels(defaults, defaultLevel)
         }
 
-        setupLevels(defaults, defaultName){
+        setupLevels(defaults, defaultLevel){
           let dims = this.getDims(defaults["margin"])
-          this.createFocus(defaults["margin"])
+          this.createFocus(dims, defaults["margin"])
           this.createAxis(dims, defaults["margin"])
           let dragFunc = this.createDraggable()
         }
@@ -316,8 +397,8 @@
 
         addAxisLine(dims, margin){
           this.x = d3.scaleLinear()
-                    .rangeRound([0, dims[0]])
-                    .domain([0, 8])
+                     .rangeRound([0, dims[0]])
+                     .domain([0, 8])
 
           this.focus.append('g')
                     .attr('class', 'axis axis--x')
@@ -352,7 +433,10 @@
         }
 
         createDraggable(){
-          //let perlin, x, y, line = this.perlin, this.x, this.y, this.line
+          let perlin = this.perlin,
+              x = this.x,
+              y = this.y,
+              line = this.line
           function dragstarted(d){
             d3.select(this).raise().classed('active', true)
           }
@@ -369,12 +453,80 @@
             d3.select(this).classed('active', false)
             perlin.editLevel(d)
           }
+
+          return d3.drag()
+                   .on("start", dragstarted)
+                   .on("drag",  dragged)
+                   .on("end",   dragended)
         }
 
-        return d3.drag()
-                 .on("start", dragstarted)
-                 .on("drag",  dragged)
-                 .on("end",   dragended)
+        updateGraph(points, i = -1){
+          T = 500
+          const t = this.focus.transition()
+                              .duration(T)
+
+          let p = this.focus.select("path.line")
+          let c = this.focus.selectAll('circle.line')
+          if(i != -1){
+            p.datum(points)
+             .transition(t)
+             .attr("d", this.line)
+
+            points.splice(i, 1)
+          }
+          p.datum(points)
+           .on("click", d => this.addPoint(this, d))
+           .transition()
+           .duration(0)
+           .delay(T)
+           .attr("d", this.line)
+
+          c.data(points, d => d[0])
+           .join(enter => enter.append('circle')
+                               .attr("class", "line")
+                               .attr('r', 5.0)
+                               .attr('cx', d => x(d[0]))
+                               .attr('cy', d => y(d[1]))
+                               .on("click", removePoint)
+                               .each(d => perlin.addLevel(d))
+                               .call(enter => {
+                               return enter.transition(t)
+                                           .style("opacity", 1)})
+                               .call(drag),
+                 update => update.each(d => perlin.editLevel(d))
+                                 .call(update => {
+                                 return update.transition(t)
+                                              .attr('cx', d => x(d[0]))
+                                              .attr('cy', d => y(d[1]))
+                                 }),
+                 exit => exit.each(d => perlin.delLevel(d))
+                             .call(exit => {
+                             return exit.transition(t)
+                                        .style("opacity", 0)
+                                        .remove()}))
+
+        }
+
+        addPoint(self, d){
+          let coords = d3.mouse(this)
+
+          let n = [x.invert(coords[0]),
+                   y.invert(coords[1])]
+
+          points.push(n)
+          self.updateGraph(points)
+        }
+
+        function removePoint(d){
+          d3.event.preventDefault()
+
+          let i = points.indexOf(d)
+
+          if(i > 0 && i < points.length - 1){
+            points = flattenPoint(points, i)
+            updateGraph(points, i)
+          }
+        }
       }
     </script>
     <script id="Levels.js" type="text/javascript">
@@ -450,13 +602,13 @@
           let p = focus.select("path.line")
           let c = focus.selectAll('circle.line')
           if(i != -1){
-            p.datum(points)
+            p.datum(points, d => d[0])
              .transition(t)
              .attr("d", line)
 
             points.splice(i, 1)
           }
-          p.datum(points)
+          p.datum(points, d => d[0])
            .on("click", addPoint)
            .transition()
            .duration(0)
@@ -552,10 +704,11 @@
 
         // updates the Levels graph with one of the default set of points
         function setDefault(d, i){
+          console.log(d)
           svg.selectAll("circle.default").attr("stroke", "black")
           svg.select("#default" + i).attr("stroke", "white")
 
-          points = d[2]
+          let points = d[2]
           // if it's not the custom setting
           if(d[0] != "Custom"){
             // then we perform a shallow copy to prevent the preset from being edited
@@ -564,7 +717,9 @@
             points = d[2].map(v => [...v])
           }
 
+          console.log(points)
           updateGraph(points)
+          console.log(points)
         }
 
         w = +svg.attr("width")/defaultLevels.length
@@ -595,18 +750,21 @@
            })
            .on("click", d => setDefault(d))
 
-
-        setDefault(defaultLevels[defaultLevel])
+        setDefault(defaultLevels[defaultLevel], defaultLevel)
+        console.log(points)
+        console.log(defaultLevels[4])
       }
     </script>
     <script id="Main.js" type="text/javascript">
+      let pMap, kernel
       function init(){
-        let earthFade = hexFade(cScales["earthScale"])
+        let earthFade = fades.hexFade(cScales["earthScale"])
 
-        let pMap = new Perlin(2, earthFade)
+        pMap = new Perlin(1, earthFade)
+        kernel = circleKernel(20, defaultPerlin.lFunc)
+        pMap.enableDrawing(kernel, 0.05, 100)
 
         initLevels(pMap, defaultLevels, 4)
-        //setTimeout(testDrawSpeed, 1000, pMap, 1000)
       }
     </script>
   </head>
