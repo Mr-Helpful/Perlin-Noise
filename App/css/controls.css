@@ -1,0 +1,119 @@
+/*********************/
+/* Top level styling */
+/*********************/
+body {
+/*we want the options menu to be flush to the side of the page*/
+  margin: 0px;
+}
+
+#container {
+  display: grid;
+  grid-template-columns: 1fr;
+/*prevent the user from seeing the controls by scrolling over*/
+  overflow-x: hidden;
+}
+
+#content {
+  grid-area: 1/ 1/ 1/ 1;
+/*we want the chart to fill the grid cell widthwise*/
+  width: 100vw;
+/*and fill the whole page heightwise*/
+  height: 100vh;
+}
+
+/***************************/
+/* Formatting the controls */
+/***************************/
+#controls {
+/*we want to force our menu onto the right of the screen*/
+/*rather than below the chart*/
+  grid-area: 1/ 2/ 1/ 2;
+/*we specify a width as otherwise some text would be lost*/
+  width: 200px;
+  margin-left: 1px;
+
+  outline-style: solid;
+  outline-width: 1px;
+  outline-color: #6B6A78;
+
+  background-color: #EDE8EA;
+}
+
+#controls > * {
+  font-family: 'Nunito';
+  padding: 5px;
+}
+
+#title {
+  outline-style: solid;
+  outline-width: 1px;
+  outline-color: #6B6A78;
+
+  background-color: #E6DDDB;
+}
+
+/******************/
+/* Button styling */
+/******************/
+.button {
+  margin:  5px;
+  padding: 5px;
+
+  border-width:  1px;
+  border-radius: 2px;
+  border-style:  solid;
+  border-color:  #6B6A78;
+
+  background-color: #EEC6AD;
+}
+
+.button:hover {
+  background-color: #EAB899;
+}
+
+/*******************************/
+/* Showing and hiding the menu */
+/*******************************/
+.menu {
+  transform: translate(0, 0);
+  transition: transform 0.5s ease;
+}
+
+.tab {
+  grid-area: 1/ 1/ 1/ 1;
+  place-self: center end;
+
+  width: 15px;
+  height: 70px;
+
+  outline-style: solid;
+  outline-width: 1px;
+  outline-color: #6B6A78;
+
+  text-align: center;
+  vertical-align: middle;
+  line-height: 70px;
+
+  background: #EDE8EA;
+}
+
+#close {
+  z-index: 100;
+  opacity: 0;
+}
+
+#close:hover, #close:hover ~ .tab {
+  background: #E2DADD;
+}
+
+#hidden {
+  display: none;
+}
+
+#hidden:checked ~ #close {
+  opacity: 1;
+}
+
+#hidden:checked ~ .menu {
+  transform: translate(-200px, 0);
+}
