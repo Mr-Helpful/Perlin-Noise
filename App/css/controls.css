@@ -26,7 +26,7 @@ body {
 /***************************/
 #controls {
 /*we want to force our menu onto the right of the screen*/
-/*rather than below the chart*/
+/*rather than above the chart*/
   grid-area: 1/ 2/ 1/ 2;
 /*we specify a width as otherwise some text would be lost*/
   width: 200px;

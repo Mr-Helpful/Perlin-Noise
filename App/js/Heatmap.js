@@ -19,9 +19,8 @@ class Perlin{
     this.resetMaps()
   }
 
-  // a generic method used to fully reset the perlin heatmap
-  // unfortunately, we don't save the perlin map
-  // this means the time complexity is O(n) (dependant on the number of levels)
+  /* a generic method used to fully reset the perlin heatmap */
+  // the time complexity is O(n) (dependant on the number of levels)
   resetMaps(){
     let [w, h] = this.iDims
     this.perlinMap = new Array(w*h).fill(0)
