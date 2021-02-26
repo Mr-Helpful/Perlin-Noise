@@ -236,10 +236,9 @@
   var fade = t => t*t*t*(t*(t*6-15)+10)
 
   module.fade = function(v){
-    fades = {"quintic": t => t*t*t*(t*(t*6-15)+10),
-             "perlin": t => t*t*t*(t*(t*6-15)+10),
-             "cubic": t => t*t*(3-t*2),
-             "linear": t => t}
+    const fades = {"perlin": t => t*t*t*(t*(t*6-15)+10),
+                   "cubic":  t => t*t*(3-t*2),
+                   "linear": t => t}
     if(typeof v == 'function'){
       fade = v
     }
@@ -247,7 +246,7 @@
       fade = fades[v]
     }
     else{
-      console.error("Error setting fade function, provide either a function or a valid name")
+      console.warn("Not able to set fade function, provide either a function or a valid name")
     }
   }
 

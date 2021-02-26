@@ -27,7 +27,7 @@
     // clamps the value and stretches it to the range 0 -> shades.length - 1
     let f = Math.max(Math.min(t, 0.9999), 0) * (shades.length - 1)
     t = Math.floor(f)
-    return rgbaToHex(fadeScale(shades[t], shades[t + 1], f-t))
+    return fadeScale(shades[t], shades[t + 1], f-t)
   }
 
 /**

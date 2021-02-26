@@ -1,0 +1,31 @@
+.graph.line {
+  fill: none;
+  stroke: steelblue;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  stroke-width: 2;
+  cursor: cell;
+}
+
+.graph.points {
+  fill: steelblue;
+  opacity: 0;
+  cursor: ns-resize;
+}
+
+.graph.defaults {
+  opacity: 1;
+  cursor: pointer;
+}
+
+.graph.tip {
+  background-color: rgba(160, 240, 240, 0.9);
+  border-radius: 5px;
+  padding: 3px 4px;
+
+  position: absolute;
+  display: none;
+
+/* we need to stop the tooltip eating the hover event from the item under it*/
+  pointer-events: none;
+}
