@@ -3,8 +3,8 @@ class Perlin{
     this.cnv = canvas
     this.ctx = this.cnv.getContext("2d")
     this.ctx.scale(gridWidth, gridWidth)
-    this.iDims = [this.cnv.width/gridWidth,
-                  this.cnv.height/gridWidth]
+    this.iDims = [Math.ceil(this.cnv.width/gridWidth),
+                  Math.ceil(this.cnv.height/gridWidth)]
 
     this.cnvInt = new OffscreenCanvas(this.iDims[0], this.iDims[1])
     this.ctxInt = this.cnvInt.getContext("2d")
@@ -40,15 +40,16 @@ class Perlin{
     this.downEvent = this.startDrawing.bind(this, kernel, A, T)
     this.moveEvent = this.moveBrush.bind(this)
     this.upEvent = this.endDrawing.bind(this)
-    this.cnv.addEventListener("mousedown", this.downEvent)
-    this.cnv.addEventListener("mousemove", this.moveEvent)
-    this.cnv.addEventListener("mouseup", this.upEvent)
+    this.cnv.addEventListener("pointerdown", this.downEvent)
+    this.cnv.addEventListener("pointermove", this.moveEvent)
+    this.cnv.addEventListener("mouseout", this.upEvent)
+    this.cnv.addEventListener("pointerup", this.upEvent)
   }
 
   disableDrawing(){
-    this.cnv.removeEventListener("mousedown", this.downEvent)
-    this.cnv.removeEventListener("mousemove", this.moveEvent)
-    this.cnv.removeEventListener("mouseup", this.upEvent)
+    this.cnv.removeEventListener("pointerdown", this.downEvent)
+    this.cnv.removeEventListener("pointermove", this.moveEvent)
+    this.cnv.removeEventListener("pointerup", this.upEvent)
   }
 
   startDrawing(kernel, A, T, e){
@@ -60,18 +61,35 @@ class Perlin{
     let rect = e.target.getBoundingClientRect()
     this.mx = e.clientX - rect.left //x position within the element.
     this.my = e.clientY - rect.top  //y position within the element.
+    this.mp = e.pressure || this.mp
   }
 
   endDrawing(e){
     clearInterval(this.drawInterval)
   }
 
+  kernelShrink(kernel){
+    let [m, n] = [kernel[0].length, kernel.length].map(d => Math.floor(d*this.mp))
+    let blank = Array(n).fill(Array(m).fill(0))
+
+    return blank.map((row, j) => {
+      return row.map((_, i) => {
+        let x = Math.ceil(i/this.mp)
+        let y = Math.ceil(j/this.mp)
+        return kernel[y][x]
+      })
+    })
+  }
+
   // adds a specified kernel at a specified (x, y) coordinate on the board
   kernelAdd(kernel, A){
     let x = Math.floor(this.mx/this.gridW)
     let y = Math.floor(this.my/this.gridW)
+
+    let nKernel = this.kernelShrink(kernel)
+    console.log(nKernel)
     // this is the wrong way around for an m*n matrix but it fits the w, h convention
-    let [m, n] = [kernel[0].length, kernel.length].map(d => Math.floor(d/2))
+    let [m, n] = [nKernel[0].length, nKernel.length].map(d => Math.floor(d/2))
     let [w, h] = this.iDims
 
     // clamps the center offsets for the kernel
@@ -92,7 +110,7 @@ class Perlin{
         i = x+kx
         j = y+ky
         let t = j*this.iDims[0]+i,
-            s = kernel[y][x]*A
+            s = nKernel[y][x]*A
         this.perlinMap[t] += s
       }
     }

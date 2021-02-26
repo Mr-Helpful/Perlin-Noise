@@ -4,11 +4,8 @@
 body {
 /*we want the options menu to be flush to the side of the page*/
   margin: 0px;
-}
-
-#container {
+/*we need the items to be displayed in a grid to place controls on the right*/
   display: grid;
-  grid-template-columns: 1fr;
 /*prevent the user from seeing the controls by scrolling over*/
   overflow-x: hidden;
 }
@@ -75,7 +72,7 @@ body {
 /* Showing and hiding the menu */
 /*******************************/
 .menu {
-  transform: translate(0, 0);
+  transform: translate(0px, 0);
   transition: transform 0.5s ease;
 }
 
@@ -84,14 +81,12 @@ body {
   place-self: center end;
 
   width: 15px;
-  height: 70px;
 
   outline-style: solid;
   outline-width: 1px;
   outline-color: #6B6A78;
 
   text-align: center;
-  vertical-align: middle;
   line-height: 70px;
 
   background: #EDE8EA;

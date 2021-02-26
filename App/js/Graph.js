@@ -190,10 +190,7 @@ function initLevels(perlin, defaults, defaultLevel){
           .style("top", d3.event.pageY + 5 + "px")
      })
      .on("mouseout", function(d) {
-       tip.transition()
-          .style("display", "none")
-          .duration(500)
-          .attr("opacity", 0)
+       tip.style("display", "none")
      })
      .on("click", d => setDefault(d))
 
@@ -227,6 +224,6 @@ function createAxis(focus, dims, x, y){
        .attr("text-anchor", "top")
        .attr("transform", "rotate(-90)")
        .attr("x", -dims[1] / 2 - 50)
-       .attr("y", -40)
+       .attr("y", -30)
        .text("Amplitude (log2)")
 }
