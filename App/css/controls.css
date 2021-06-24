@@ -4,30 +4,22 @@
 body {
 /*we want the options menu to be flush to the side of the page*/
   margin: 0px;
-/*we need the items to be displayed in a grid to place controls on the right*/
-  display: grid;
 /*prevent the user from seeing the controls by scrolling over*/
   overflow-x: hidden;
-}
-
-#content {
-  grid-area: 1/ 1/ 1/ 1;
-/*we want the chart to fill the grid cell widthwise*/
-  width: 100vw;
-/*and fill the whole page heightwise*/
-  height: 100vh;
 }
 
 /***************************/
 /* Formatting the controls */
 /***************************/
-#controls {
+.menu.controls {
 /*we want to force our menu onto the right of the screen*/
-/*rather than above the chart*/
-  grid-area: 1/ 2/ 1/ 2;
+  position: fixed;
+  right: -201px;
+/*we also want it to fill the screen vertically*/
+  height: 100%;
+
 /*we specify a width as otherwise some text would be lost*/
   width: 200px;
-  margin-left: 1px;
 
   outline-style: solid;
   outline-width: 1px;
@@ -36,12 +28,12 @@ body {
   background-color: #EDE8EA;
 }
 
-#controls > * {
+.menu.controls > * {
   font-family: 'Nunito';
   padding: 5px;
 }
 
-#title {
+.menu.controls > #title {
   outline-style: solid;
   outline-width: 1px;
   outline-color: #6B6A78;
@@ -77,8 +69,11 @@ body {
 }
 
 .tab {
-  grid-area: 1/ 1/ 1/ 1;
-  place-self: center end;
+/*we want to force the tabs onto the middle right of the page*/
+  position: fixed;
+  right: 0px;
+  top: 50%;
+  margin-top: -35px;
 
   width: 15px;
 
