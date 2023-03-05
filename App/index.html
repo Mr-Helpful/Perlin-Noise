@@ -9,44 +9,43 @@
   <link rel="stylesheet" href="css/graph.css">
   <link rel="stylesheet" href="css/heatmap.css">
   <script src="https://d3js.org/d3.v5.min.js"></script>
-  <script src="modules/ContextMenu.js"></script>
-  <script src="modules/Fades.js"></script>
+  <script type="module" src="modules/ContextMenu.js"></script>
+  <script type="module" src="modules/Fades.js"></script>
   <script src="modules/Generator.js"></script>
-  <script src="js/Data.js"></script>
-  <script src="js/Graph.js"></script>
-  <script src="js/Perlin.js"></script>
-  <script src="app.js" defer></script>
+  <!-- <script type="module" src="js/Data.js"></script>
+  <script type="module" src="js/Graph.js"></script>
+  <script type="module" src="js/Perlin.js"></script> -->
+  <script type="module" src="app.js"></script>
 </head>
 
-<body onload="init()">
+<body>
   <input id='hidden' class='menu' type='checkbox'>
   <label id='close' class='menu tab' for='hidden'>
-      <div>></div>
-    </label>
-  <div id='open' class='menu tab'>
-    <</div>
-      <div id='levels' class='menu controls'>
-        <div id='title'>Levels controls</div>
-        <table id='info'>
-          <tr>
-            <td>Frequency:</td>
-            <td id='freq'></td>
-          </tr>
-          <tr>
-            <td>Amplitude:</td>
-            <td id='ampl'></td>
-          </tr>
-          <tr>
-            <td>Current seed:</td>
-            <td id='seed'></td>
-          </tr>
-        </table>
-        <div id='delete' class='button'>Delete level</div>
-        <div id='reset' class='button'>Reset level</div>
-      </div>
-      <div class="graph tip"></div>
-      <svg id="Levels" width=500 height=250></svg>
-      <canvas id="heatmap" class="terrain" width=500 height=500></canvas>
+    <div>&lt</div>
+  </label>
+  <div id='open' class='menu tab'>&gt</div>
+  <div id='levels' class='menu controls'>
+    <div id='title'>Levels controls</div>
+    <table id='info'>
+      <tr>
+        <td>Frequency:</td>
+        <td id='freq'></td>
+      </tr>
+      <tr>
+        <td>Amplitude:</td>
+        <td id='ampl'></td>
+      </tr>
+      <tr>
+        <td>Current seed:</td>
+        <td id='seed'></td>
+      </tr>
+    </table>
+    <div id='delete' class='button'>Delete level</div>
+    <div id='reset' class='button'>Reset level</div>
+  </div>
+  <div class="graph tip"></div>
+  <svg id="Levels" width=500 height=250></svg>
+  <canvas id="heatmap" class="terrain" width=500 height=500></canvas>
 </body>
 
 </html>

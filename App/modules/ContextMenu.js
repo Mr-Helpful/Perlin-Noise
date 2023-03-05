@@ -37,74 +37,78 @@
     > throw an error if the name does not exist in the values
 */
 
-(function(global){
-  global.d3.menu = function(){
-    let menuClass = "d3-context-menu"
+export function d3_menu() {
+  const menu_class = 'd3-context-menu'
 
-    let scope
-    let div = d3.select("body")
-                .append("div")
-                .attr("class", menuClass)
+  let scope
+  let div = d3.select('body').append('div').attr('class', menu_class)
+  let menu_items = div.append('ol')
 
-    let mList = div.append("ol")
+  d3.select('body').on(
+    'mouseup',
+    function () {
+      div.style('display', 'none')
+    }.bind(this)
+  )
 
-    d3.select("body")
-      .on("mouseup", (function(){
-        div.style("display", "none")
-      }).bind(this))
+  function menu(elem) {
+    elem.on('contextmenu', function (d, i, j) {
+      d3.event.preventDefault()
+      scope = [this, d, i, j]
 
-    function menu(elem){
-      elem.on("contextmenu", function(d, i, j){
-        d3.event.preventDefault()
-        scope = [this, d, i, j]
+      div
+        // we move the div up two extra pixels to ensure that if right clicked
+        // and released rapidly, the context menu will select the default
+        .style('left', d3.event.pageX - 2 + 'px')
+        .style('top', d3.event.pageY - 4 + 'px')
+        .style('display', 'block')
+    })
+  }
 
-        div.style("left", (d3.event.pageX - 2) + "px")
-           // we move the div up two extra pixels to ensure that if right clicked rapidly, the context menu will select the default
-  			   .style("top", (d3.event.pageY - 4) + "px")
-           .style("display", "block")
-      })
-    }
-
-    menu.addEntry = function(name, callback){
-      mList.append("li")
-           .attr("id", name)
-           .html(name)
-           .on("mouseup", (function(){
-             // we can't use apply here as it takes the scope seperately
-             callback.call(...scope)
-           }).bind(this))
-
-      return menu
-    }
-
-    menu.removeEntry = function(name){
-      // we need to enclose the name in '' in case the name contains special characters
-      let entry = mList.select("li[id='" + name + "']")
-      if(entry.node()){
-        entry.remove()
-        return menu
-      }
-      console.warn("The entry '"+name+"' does not exist in the context menu")
-      return menu
-    }
-
-    menu.makeDefault = function(name){
-      // we need to enclose the name in '' in case the name contains special characters
-      let entry = mList.select("li[id='" + name + "']")
-      if(entry.node()){
-        mList.insert(function(){return entry.remove().node()}, "li")
-        return menu
-      }
-      console.warn("The entry '"+name+"' does not exist in the context menu")
-      return menu
-    }
-
-    function hideMenu(){
-    }
+  menu.addEntry = function (name, callback) {
+    menu_items
+      .append('li')
+      .attr('id', name)
+      .html(name)
+      .on(
+        'mouseup',
+        function () {
+          // we can't use apply here as it takes the scope seperately
+          callback.call(...scope)
+        }.bind(this)
+      )
 
     return menu
   }
-})(this)
+
+  menu.removeEntry = function (name) {
+    // we need to enclose the name in '' in case the name contains special characters
+    let entry = menu_items.select("li[id='" + name + "']")
+    if (entry.node()) {
+      entry.remove()
+      return menu
+    }
+    console.warn("The entry '" + name + "' does not exist in the context menu")
+    return menu
+  }
+
+  menu.makeDefault = function (name) {
+    // we need to enclose the name in '' in case the name contains special characters
+    let entry = menu_items.select("li[id='" + name + "']")
+    if (entry.node()) {
+      menu_items.insert(function () {
+        return entry.remove().node()
+      }, 'li')
+      return menu
+    }
+    console.warn("The entry '" + name + "' does not exist in the context menu")
+    return menu
+  }
+
+  function hideMenu() {}
+
+  return menu
+}
 
 /*
 Positioning:
